@@ -1,0 +1,24 @@
+{
+  "name": "processwire/processwire-legacy",
+  "type": "library",
+  "description": "ProcessWire CMS/CMF 2.8.x (legacy, non-namespace version)",
+  "keywords": [ "processwire", "cms","cmf", "content management system" ],
+  "homepage": "https://processwire.com",
+  "license": "MPL-2.0", 
+  "authors": [
+    {
+      "name": "Ryan Cramer",
+      "email": "ryan@processwire.com",
+      "homepage": "https://processwire.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": ">=5.3.8",
+    "ext-gd": "*"
+  },
+  "autoload": {
+    "files": [ "wire/core/ProcessWire.php" ]
+  },
+  "minimum-stability": "dev"
+}
