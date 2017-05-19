@@ -1,45 +1,105 @@
 <?php 
 
-/**
- * ProcessWire API Bootstrap
- *
- * Initializes all the ProcessWire classes and prepares them for API use
- * 
- * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
- * https://processwire.com
- * 
- * @todo: get language permissions to work with extra actions
- * 
- */
-
 require_once(__DIR__ . '/boot.php');
 
 /**
- * ProcessWire API bootstrap class
+ * ProcessWire API Bootstrap
  *
- * Gets ProcessWire's API ready for use
+ * #pw-summary Represents an instance of ProcessWire connected with a set of API variables. 
+ * #pw-summary-instances Methods for managing ProcessWire instances. Note that most of these methods are static. 
+ * #pw-use-constants
+ * #pw-use-constructor
+ * #pw-body = 
+ * This class boots a ProcessWire instance. The current ProcessWire instance is represented by the `$wire` API variable. 
+ * ~~~~~
+ * // To create a new ProcessWire instance
+ * $wire = new ProcessWire('/server/path/', 'https://hostname/url/');
+ * ~~~~~
+ * #pw-body
+ * 
+ * ProcessWire 2.8.x, Copyright 2017 by Ryan Cramer
+ * https://processwire.com
  * 
  * @method init()
  * @method ready()
  * @method finished()
- *
- */ 
+ * 
+ * 
+ */
+
 class ProcessWire extends Wire {
 
-	const versionMajor = 2; 
-	const versionMinor = 8; 
-	const versionRevision = 35; 
+	/**
+	 * Major version number
+	 * 
+	 */
+	const versionMajor = 2;
+	
+	/**
+	 * Minor version number
+	 * 
+	 */
+	const versionMinor = 8;
+	
+	/**
+	 * Reversion revision number
+	 * 
+	 */
+	const versionRevision = 62;
+
+	/**
+	 * Version suffix string (when applicable)
+	 * 
+	 */
 	const versionSuffix = '';
-	
-	const indexVersion = 280; // required version for index.php file (represented by PROCESSWIRE define)
+
+	/**
+	 * Minimum required index.php version, represented by the PROCESSWIRE define
+	 * 
+	 */
+	const indexVersion = 280;
+
+	/**
+	 * Minimum required .htaccess file version
+	 * 
+	 */
 	const htaccessVersion = 280;
-	
-	const statusBoot = 0; // system is booting
-	const statusInit = 2; // system and modules are initializing
-	const statusReady = 4; // system and $page are ready
-	const statusRender = 8; // $page's template is being rendered
-	const statusFinished = 16; // request has been delivered
-	const statusFailed = 1024; // request failed due to exception or 404
+
+	/**
+	 * Status when system is booting
+	 * 
+	 */
+	const statusBoot = 0;
+
+	/**
+	 * Status when system and modules are initializing
+	 * 
+	 */
+	const statusInit = 2;
+
+	/**
+	 * Systus when system, $page and API variables are ready
+	 * 
+	 */
+	const statusReady = 4;
+
+	/**
+	 * Status when the current $page’s template file is being rendered
+	 * 
+	 */
+	const statusRender = 8;
+
+	/**
+	 * Status when the request has been fully delivered
+	 * 
+	 */
+	const statusFinished = 16;
+
+	/**
+	 * Status when the request failed due to an Exception or 404
+	 * 
+	 */
+	const statusFailed = 1024; 
 
 	/**
 	 * Whether debug mode is on or off
@@ -126,7 +186,7 @@ class ProcessWire extends Wire {
 		if(is_string($config)) $config = self::buildConfig($config, $rootURL);
 		if(!$config instanceof Config) throw new WireException("No configuration information available");
 		
-		// this is reset in the $this->config() method based on current debug mode
+		// this is reset in the $this->setConfig() method based on current debug mode
 		ini_set('display_errors', true);
 		error_reporting(E_ALL | E_STRICT);
 
@@ -145,12 +205,23 @@ class ProcessWire extends Wire {
 		$this->wire('hooks', new WireHooks($this, $config), true);
 
 		$this->shutdown = $this->wire(new WireShutdown());
-		$this->config($config);
+		$this->setConfig($config);
 		$this->load($config);
+		
+		if($this->getNumInstances() > 1) {
+			// this instance is not handling the request and needs a mock $page API var and pageview
+			/** @var ProcessPageView $view */
+			$view = $this->wire('modules')->get('ProcessPageView');
+			$view->execute(false);
+		}
 	}
 
 	public function __toString() {
-		return $this->className() . " " . self::versionMajor . "." . self::versionMinor . "." . self::versionRevision; 
+		$str = $this->className() . " ";
+		$str .= self::versionMajor . "." . self::versionMinor . "." . self::versionRevision; 
+		if(self::versionSuffix) $str .= " " . self::versionSuffix;
+		if($this->getNumInstances() > 1) $str .= " #$this->instanceID";
+		return $str;
 	}
 
 	/**
@@ -159,7 +230,7 @@ class ProcessWire extends Wire {
 	 * @param Config $config
  	 *
 	 */
-	protected function config(Config $config) {
+	protected function setConfig(Config $config) {
 
 		$this->wire('config', $config, true); 
 		$this->wire($config->paths);
@@ -182,11 +253,13 @@ class ProcessWire extends Wire {
 
 		if($config->https === null) {
 			$config->https = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) == 'on')
-				|| (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+				|| (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)
+				|| (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) == 'https'); // AWS LOAD BALANCER
 		}
 		
 		$config->ajax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest');
-		$config->cli = (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || ($_SERVER['argc'] > 0 && is_numeric($_SERVER['argc']))));
+		$config->cli = (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || (isset($_SERVER['argc']) && $_SERVER['argc'] > 0 && is_numeric($_SERVER['argc']))));
+		$config->modal = empty($_GET['modal']) ? false : abs((int) $_GET['modal']); 
 		
 		$version = self::versionMajor . "." . self::versionMinor . "." . self::versionRevision; 
 		$config->version = $version;
@@ -204,9 +277,17 @@ class ProcessWire extends Wire {
 		// If script is being called externally, add an extra shutdown function 
 		if(!$config->internal) register_shutdown_function(function() {
 			if(error_get_last()) return;
-			$process = $this->wire('process');
+			$process = isset($this) ? $this->wire('process') : wire('process');
 			if($process == 'ProcessPageView') $process->finished();
 		});
+		
+		if($config->useFunctionsAPI) {
+			$file = $config->paths->core . 'FunctionsAPI.php';
+			/** @noinspection PhpIncludeInspection */
+			include_once($file);
+		}
+		
+
 
 		$this->setStatus(self::statusBoot);
 	}
@@ -262,7 +343,9 @@ class ProcessWire extends Wire {
 	}
 
 	/**
-	 * Load's ProcessWire using the supplied Config and populates all API fuel
+	 * Load’s ProcessWire using the supplied Config and populates all API fuel
+	 * 
+	 * #pw-internal
  	 *
 	 * @param Config $config
 	 * @throws WireDatabaseException|WireException on fatal error
@@ -275,6 +358,7 @@ class ProcessWire extends Wire {
 			Debug::timer('boot.load'); 
 		}
 
+		$this->wire('urls', $config->urls); // shortcut API var
 		$this->wire('log', new WireLog(), true); 
 		$this->wire('notices', new Notices(), true); 
 		$this->wire('sanitizer', new Sanitizer()); 
@@ -292,7 +376,8 @@ class ProcessWire extends Wire {
 			$this->trackException($e, true, 'Unable to load WireDatabasePDO');
 			throw new WireDatabaseException($e->getMessage()); 
 		}
-		
+	
+		/** @var WireCache $cache */
 		$cache = $this->wire('cache', new WireCache(), true); 
 		$cache->preload($config->preloadCacheNames); 
 		
@@ -402,6 +487,8 @@ class ProcessWire extends Wire {
 	/**
 	 * Hookable init for anyone that wants to hook immediately before any autoload modules initialized or after all modules initialized
 	 * 
+	 * #pw-hooker
+	 * 
 	 */
 	protected function ___init() {
 		if($this->debug) Debug::timer('boot.modules.autoload.init'); 
@@ -411,6 +498,8 @@ class ProcessWire extends Wire {
 
 	/**
 	 * Hookable ready for anyone that wants to hook immediately before any autoload modules ready or after all modules ready
+	 * 
+	 * #pw-hooker
 	 *
 	 */
 	protected function ___ready() {
@@ -423,6 +512,8 @@ class ProcessWire extends Wire {
 
 	/**
 	 * Hookable ready for anyone that wants to hook when the request is finished
+	 * 
+	 * #pw-hooker
 	 *
 	 */
 	protected function ___finished() {
@@ -430,9 +521,11 @@ class ProcessWire extends Wire {
 		$config = $this->wire('config');
 		$session = $this->wire('session');
 		$cache = $this->wire('cache'); 
+		$profiler = $this->wire('profiler');
 		
 		if($session) $session->maintenance();
 		if($cache) $cache->maintenance();
+		if($profiler) $profiler->maintenance();
 
 		if($config->templateCompile) {
 			$compiler = new FileCompiler($this->wire('config')->paths->templates);
@@ -443,6 +536,7 @@ class ProcessWire extends Wire {
 			$compiler = new FileCompiler($this->wire('config')->paths->siteModules);
 			$compiler->maintenance();
 		}
+		
 	}
 
 	/**
@@ -495,7 +589,16 @@ class ProcessWire extends Wire {
 		if(is_object($value)) return call_user_func_array(array($value, '__invoke'), $arguments); 
 		return parent::__call($method, $arguments);
 	}
-	
+
+	/**
+	 * Get an API variable
+	 * 
+	 * #pw-internal
+	 * 
+	 * @param string $name Optional API variable name
+	 * @return mixed|null|Fuel
+	 * 
+	 */
 	public function fuel($name = '') {
 		if(empty($name)) return $this->fuel;
 		return $this->fuel->$name;
@@ -522,6 +625,8 @@ class ProcessWire extends Wire {
 	/**
 	 * Instance ID of this ProcessWire instance
 	 * 
+	 * #pw-group-instances
+	 * 
 	 * @return int
 	 * 
 	 */
@@ -531,6 +636,8 @@ class ProcessWire extends Wire {
 
 	/**
 	 * Add a ProcessWire instance and return the instance ID
+	 * 
+	 * #pw-group-instances
 	 * 
 	 * @param ProcessWire $wire
 	 * @return int
@@ -546,6 +653,8 @@ class ProcessWire extends Wire {
 	/**
 	 * Get all ProcessWire instances
 	 * 
+	 * #pw-group-instances
+	 * 
 	 * @return array
 	 * 
 	 */
@@ -554,7 +663,21 @@ class ProcessWire extends Wire {
 	}
 
 	/**
+	 * Return number of instances
+	 * 
+	 * #pw-group-instances
+	 * 
+	 * @return int
+	 * 
+	 */
+	public static function getNumInstances() {
+		return count(self::$instances);
+	}
+
+	/**
 	 * Get a ProcessWire instance by ID
+	 * 
+	 * #pw-group-instances
 	 * 
 	 * @param int|null $instanceID Omit this argument to return the current instance
 	 * @return null|ProcessWire
@@ -567,6 +690,8 @@ class ProcessWire extends Wire {
 	
 	/**
 	 * Get the current ProcessWire instance
+	 * 
+	 * #pw-group-instances
 	 * 
 	 * @return ProcessWire|null
 	 * 
@@ -582,6 +707,8 @@ class ProcessWire extends Wire {
 	/**
 	 * Set the current ProcessWire instance
 	 * 
+	 * #pw-group-instances
+	 * 
 	 * @param ProcessWire $wire
 	 * 
 	 */
@@ -591,6 +718,8 @@ class ProcessWire extends Wire {
 
 	/**
 	 * Remove a ProcessWire instance
+	 * 
+	 * #pw-group-instances
 	 * 
 	 * @param ProcessWire $wire
 	 * 
@@ -606,7 +735,7 @@ class ProcessWire extends Wire {
 	}
 
 	/**
-	 * Build a Config object for booting ProcessWire
+	 * Static method to build a Config object for booting ProcessWire
 	 * 
 	 * @param string $rootPath Path to root of installation where ProcessWire's index.php file is located.
 	 * @param string $rootURL Should be specified only for secondary ProcessWire instances. 
@@ -618,7 +747,6 @@ class ProcessWire extends Wire {
 	 */
 	public static function buildConfig($rootPath, $rootURL = null, array $options = array()) {
 		
-		
 		if(DIRECTORY_SEPARATOR != '/') {
 			$rootPath = str_replace(DIRECTORY_SEPARATOR, '/', $rootPath);
 		}
@@ -628,13 +756,14 @@ class ProcessWire extends Wire {
 		$httpHost = '';
 		$scheme = '';
 		$siteDir = isset($options['siteDir']) ? $options['siteDir'] : 'site';
+		$cfg = array('dbName' => '');
 		
 		if($rootURL && strpos($rootURL, '://')) {
 			// rootURL is specifying scheme and hostname
 			list($scheme, $httpHost) = explode('://', $rootURL);
 			if(strpos($httpHost, '/')) {
 				list($httpHost, $rootURL) = explode('/', $httpHost, 2);	
-				if(empty($rootURL)) $rootURL = '/';
+				$rootURL = "/$rootURL";
 			} else {
 				$rootURL = '/';
 			}
@@ -645,9 +774,6 @@ class ProcessWire extends Wire {
 		$rootPath = rtrim($rootPath, '/');
 		$_rootURL = $rootURL;
 		if(is_null($rootURL)) $rootURL = '/';
-		
-		$config = new Config();
-		$config->dbName = '';
 		
 		// check what rootPath is referring to
 		if(strpos($rootPath, "/$siteDir")) {
@@ -678,11 +804,11 @@ class ProcessWire extends Wire {
 			unset($sf, $f, $x);
 		
 			// when internal is true, we are not being called by an external script
-			$config->internal = $realIndexFile == $realScriptFile;
+			$cfg['internal'] = $realIndexFile == $realScriptFile;
 
 		} else {
 			// when included from another app or command line script
-			$config->internal = false;
+			$cfg['internal'] = false;
 			$host = '';
 		}
 		
@@ -709,42 +835,50 @@ class ProcessWire extends Wire {
 		}
 
 		// other default directories
+		$sitePath = $rootPath . "/$siteDir/";
 		$wireDir = "wire";
 		$coreDir = "$wireDir/core";
 		$assetsDir = "$siteDir/assets";
 		$adminTplDir = 'templates-admin';
 	
 		// create new Config instance
-		$config->urls = new Paths($rootURL);
-		$config->urls->wire = "$wireDir/";
-		$config->urls->site = "$siteDir/";
-		$config->urls->modules = "$wireDir/modules/";
-		$config->urls->siteModules = "$siteDir/modules/";
-		$config->urls->core = "$coreDir/";
-		$config->urls->assets = "$assetsDir/";
-		$config->urls->cache = "$assetsDir/cache/";
-		$config->urls->logs = "$assetsDir/logs/";
-		$config->urls->files = "$assetsDir/files/";
-		$config->urls->tmp = "$assetsDir/tmp/";
-		$config->urls->templates = "$siteDir/templates/";
-		$config->urls->fieldTemplates = "$siteDir/templates/fields/";
-		$config->urls->adminTemplates = is_dir("$siteDir/$adminTplDir") ? "$siteDir/$adminTplDir/" : "$wireDir/$adminTplDir/";
-		$config->paths = clone $config->urls;
-		$config->paths->root = $rootPath . '/';
-		$config->paths->sessions = $config->paths->assets . "sessions/";
+		$cfg['urls'] = new Paths($rootURL);
+		$cfg['urls']->data(array(
+			'wire' => "$wireDir/",
+			'site' => "$siteDir/",
+			'modules' => "$wireDir/modules/",
+			'siteModules' => "$siteDir/modules/",
+			'core' => "$coreDir/",
+			'assets' => "$assetsDir/",
+			'cache' => "$assetsDir/cache/",
+			'logs' => "$assetsDir/logs/",
+			'files' => "$assetsDir/files/",
+			'tmp' => "$assetsDir/tmp/",
+			'templates' => "$siteDir/templates/",
+			'fieldTemplates' => "$siteDir/templates/fields/",
+			'adminTemplates' => "$wireDir/$adminTplDir/",
+		), true);
+		
+		$cfg['paths'] = clone $cfg['urls'];
+		$cfg['paths']->set('root', $rootPath . '/');
+		$cfg['paths']->data('sessions', $cfg['paths']->assets . "sessions/");
 
 		// Styles and scripts are CSS and JS files, as used by the admin application.
 	 	// But reserved here if needed by other apps and templates.
-		$config->styles = new FilenameArray();
-		$config->scripts = new FilenameArray();
+		$cfg['styles'] = new FilenameArray();
+		$cfg['scripts'] = new FilenameArray();
+		
+		$config = new Config();
+		$config->setTrackChanges(false);
+		$config->data($cfg, true);
 
 		// Include system config defaults
 		/** @noinspection PhpIncludeInspection */
 		require("$rootPath/$wireDir/config.php");
 
 		// Include site-specific config settings
-		$configFile = $config->paths->site . "config.php";
-		$configFileDev = $config->paths->site . "config-dev.php";
+		$configFile = $sitePath . "config.php";
+		$configFileDev = $sitePath . "config-dev.php";
 		if(is_file($configFileDev)) {
 			/** @noinspection PhpIncludeInspection */
 			@require($configFileDev);
@@ -757,8 +891,9 @@ class ProcessWire extends Wire {
 			$config->httpHost = $httpHost;
 			if(!in_array($httpHost, $config->httpHosts)) $config->httpHosts[] = $httpHost;
 		}
+		
 		if($scheme) $config->https = ($scheme === 'https'); 
-
+		
 		return $config;
 	}
 

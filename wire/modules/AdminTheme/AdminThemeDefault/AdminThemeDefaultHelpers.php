@@ -66,10 +66,9 @@ class AdminThemeDefaultHelpers extends WireData {
 		
 		$out = '';
 		$loggedin = $this->wire('user')->isLoggedin();
-		$touch = $this->wire('session')->get('touch');
 		$separator = "<i class='fa fa-angle-right'></i>";
 	
-		if(!$touch && $loggedin && $this->className() == 'AdminThemeDefaultHelpers') {
+		if($loggedin && $this->className() == 'AdminThemeDefaultHelpers') {
 			
 			if($this->wire('config')->debug && $this->wire('user')->isSuperuser()) {
 				$label = __('Debug Mode Tools', '/wire/templates-admin/debug.inc');
@@ -110,6 +109,7 @@ class AdminThemeDefaultHelpers extends WireData {
 		if($page->name != 'page' || $this->wire('input')->urlSegment1) return '';
 		$user = $this->wire('user');
 		if($this->wire('user')->isGuest() || !$user->hasPermission('page-edit')) return '';
+		/** @var ProcessPageAdd $module */
 		$module = $this->wire('modules')->getModule('ProcessPageAdd', array('noInit' => true));
 		$data = $module->executeNavJSON(array('getArray' => true));
 		$items = array();
@@ -124,8 +124,8 @@ class AdminThemeDefaultHelpers extends WireData {
 	
 		$out =	
 			"<div id='head_button'>" . 	
-			"<button class='ui-button dropdown-toggle'><i class='fa fa-angle-down'></i> $label</button>" . 
-			"<ul class='dropdown-menu shortcuts' data-at='right bottom+1'>$out</ul>" . 
+			"<button class='ui-button pw-dropdown-toggle'><i class='fa fa-angle-down'></i> $label</button>" . 
+			"<ul class='pw-dropdown-menu pw-dropdown-menu-rounded' data-at='right bottom+1'>$out</ul>" . 
 			"</div>";
 	
 		return $out; 
@@ -143,7 +143,7 @@ class AdminThemeDefaultHelpers extends WireData {
 
 		if($this->wire('user')->isLoggedin() && $this->wire('modules')->isInstalled('SystemNotifications')) {
 			$systemNotifications = $this->wire('modules')->get('SystemNotifications');
-			if(!$systemNotifications->placement) return;
+			if(!$systemNotifications->placement) return '';
 		}
 		
 		$defaults = array(
@@ -232,7 +232,9 @@ class AdminThemeDefaultHelpers extends WireData {
 			$info = $this->wire('modules')->getModuleInfo($p->process); 
 			if(!empty($info['icon'])) $icon = $info['icon'];
 		}
-		if($p->page_icon) $icon = $p->page_icon; // allow for option of an admin field overriding the module icon
+		// allow for option of an admin field overriding the module icon
+		$pageIcon = $p->get('page_icon');
+		if($pageIcon) $icon = $pageIcon;
 		if(!$icon) switch($p->id) {
 			case 22: $icon = 'gears'; break; // Setup
 			case 21: $icon = 'plug'; break; // Modules
@@ -286,10 +288,15 @@ class AdminThemeDefaultHelpers extends WireData {
 	
 		if(!$level && count($children)) {
 	
-			$out .= "<a href='$p->url' id='topnav-page-$p' data-from='topnav-page-{$p->parent}' class='page-$p- dropdown-toggle'>$title</a>"; 
+			$out .= "<a href='$p->url' " . 
+				"id='topnav-page-$p' " . 
+				"data-from='topnav-page-{$p->parent}' " . 
+				"class='page-$p- pw-dropdown-toggle'>" . 
+				"$title</a>"; 
+			
 			$my = 'left-1 top';
 			if(in_array($p->name, array('access', 'page', 'module'))) $my = 'left top';
-			$out .= "<ul class='dropdown-menu topnav' data-my='$my' data-at='left bottom'>";
+			$out .= "<ul class='pw-dropdown-menu topnav' data-my='$my' data-at='left bottom'>";
 	
 			if($children instanceof PageArray) foreach($children as $c) {
 			
@@ -308,7 +315,7 @@ class AdminThemeDefaultHelpers extends WireData {
 					$title = $this->_($c->title); 
 					if(!$title) $title = $c->name; 
 					$out .= 
-						"<li><a class='has-items' data-from='topnav-page-$p' href='$c->url'>$icon$title</a>" . 
+						"<li><a class='pw-has-items page-$c-' data-from='topnav-page-$p' href='$c->url'>$icon$title</a>" . 
 						"<ul>" . $this->renderTopNavItemArray($c, $moduleInfo['nav']) . "</ul></li>";
 					
 				} else if(!empty($moduleInfo['useNavJSON'])) {
@@ -317,7 +324,8 @@ class AdminThemeDefaultHelpers extends WireData {
 					if(!strlen($title)) continue;
 					$icon = $this->getPageIcon($c);
 					$out .=
-						"<li><a class='has-items has-ajax-items' data-from='topnav-page-$p' data-json='{$c->url}navJSON/' " .
+						"<li><a class='pw-has-items pw-has-ajax-items page-$c-' " . 
+						"data-from='topnav-page-$p' data-json='{$c->url}navJSON/' " .
 						"href='$c->url'>$icon$title</a><ul></ul></li>";
 
 				} else {
@@ -340,7 +348,7 @@ class AdminThemeDefaultHelpers extends WireData {
 			// The /page/ and /page/list/ are the same process, so just keep them on /page/ instead. 
 			if(strpos($url, '/page/list/') !== false) $url = str_replace('/page/list/', '/page/', $url); 
 			
-			$out .= "<a class='page-id-$p-' href='$url'>$icon$title</a>"; 
+			$out .= "<a class='page-$p-' href='$url'>$icon$title</a>"; 
 		}
 	
 		$out .= "</li>";
@@ -360,6 +368,7 @@ class AdminThemeDefaultHelpers extends WireData {
 			// ProcessPageAdd: avoid showing this menu item if there are no predefined family settings to use
 			$numAddable = $this->wire('session')->getFor('ProcessPageAdd', 'numAddable');
 			if($numAddable === null) {
+				/** @var ProcessPageAdd $processPageAdd */
 				$processPageAdd = $this->wire('modules')->getModule('ProcessPageAdd', array('noInit' => true));
 				if($processPageAdd) {
 					$addData = $processPageAdd->executeNavJSON(array("getArray" => true));
@@ -396,8 +405,15 @@ class AdminThemeDefaultHelpers extends WireData {
 				$out .= "<li><a href='{$p->url}$item[url]'>$icon$label</a></li>";
 			} else {
 				$out .= 
-					"<li><a class='has-items has-ajax-items' data-from='topnav-page-$p' data-json='{$p->url}$item[navJSON]' " . 
-					"href='{$p->url}$item[url]'>$icon$label</a><ul></ul></li>";
+					"<li>" . 
+						"<a class='pw-has-items pw-has-ajax-items' " . 
+							"data-from='topnav-page-$p' " . 
+							"data-json='{$p->url}$item[navJSON]' " . 
+							"href='{$p->url}$item[url]'>" . 
+								"$icon$label&nbsp;&nbsp;&nbsp;" . 
+						"</a>" . 
+						"<ul></ul>" . 
+					"</li>";
 			}
 		}
 		return $out; 
@@ -452,17 +468,17 @@ class AdminThemeDefaultHelpers extends WireData {
 				"<i class='fa fa-fw fa-power-off'></i> " . $this->_('Logout') . "</a></li>";
 		}
 	
-		$outMobile = "<ul id='topnav-mobile' class='dropdown-menu topnav' data-my='left top' data-at='left bottom'>$outMobile$outTools</ul>";
+		$outMobile = "<ul id='topnav-mobile' class='pw-dropdown-menu topnav' data-my='left top' data-at='left bottom'>$outMobile$outTools</ul>";
 	
 		$out .=	
 			"<li>" . 
-			"<a target='_blank' id='tools-toggle' class='dropdown-toggle' href='{$config->urls->root}'>" . 
+			"<a target='_blank' id='tools-toggle' class='pw-dropdown-toggle' href='{$config->urls->root}'>" . 
 			"<i class='fa fa-wrench'></i></a>" . 
-			"<ul class='dropdown-menu topnav' data-my='left top' data-at='left bottom'>" . $outTools . 
+			"<ul class='pw-dropdown-menu topnav' data-my='left top' data-at='left bottom'>" . $outTools . 
 			"</ul></li>";
 	
 		$out .=	
-			"<li class='collapse-topnav-menu'><a href='$admin->url' class='dropdown-toggle'>" . 
+			"<li class='collapse-topnav-menu'><a href='$admin->url' class='pw-dropdown-toggle'>" . 
 			"<i class='fa fa-lg fa-bars'></i></a>$outMobile</li>";
 		
 		$this->wire('session')->setFor('AdminThemeDefault', 'topnav', $out);
@@ -529,9 +545,11 @@ class AdminThemeDefaultHelpers extends WireData {
 	 *
 	 */
 	public function renderJSConfig() {
-	
+
+		/** @var Config $config */
 		$config = $this->wire('config'); 
-	
+
+		/** @var array $jsConfig */
 		$jsConfig = $config->js();
 		$jsConfig['debug'] = $config->debug;
 	

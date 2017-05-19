@@ -12,14 +12,20 @@
  * https://processwire.com
  * 
  * #pw-summary Holds ProcessWire configuration settings as defined in /wire/config.php and /site/config.php. 
+ * #pw-body =
+ * For more detailed descriptions of these $config properties, including default values, see the
+ * [/wire/config.php](https://github.com/processwire/processwire/blob/master/wire/config.php) file. 
+ * #pw-body
  *
  *
  * @see /wire/config.php for more detailed descriptions of all config properties. 
  *
  * @property bool $ajax If the current request is an ajax (asynchronous javascript) request, this is set to true. #pw-group-runtime
+ * @property bool|int $modal If the current request is in a modal window, this is set to a positive number. False if not. #pw-group-runtime
  * @property string $httpHost Current HTTP host name. #pw-group-HTTP-and-input
  * @property bool $https If the current request is an HTTPS request, this is set to true. #pw-group-runtime
  * @property string $version Current ProcessWire version string (i.e. "2.2.3") #pw-group-system #pw-group-runtime
+ * @property int $systemVersion System version, used by SystemUpdater to determine when updates must be applied. #pw-group-system #pw-group-runtime
  * 
  * @property FilenameArray $styles Array used by ProcessWire admin to keep track of what stylesheet files its template should load. It will be blank otherwise. Feel free to use it for the same purpose in your own sites. #pw-group-runtime
  * @property FilenameArray $scripts Array used by ProcessWire admin to keep track of what javascript files its template should load. It will be blank otherwise. Feel free to use it for the same purpose in your own sites. #pw-group-runtime
@@ -51,17 +57,18 @@
  * @property string $sessionName Default session name to use (default='wire') #pw-group-session
  * @property string $sessionNameSecure Session name when on HTTPS. Used when the sessionCookieSecure option is enabled (default). When blank (default), it will assume sessionName + 's'. #pw-group-session
  * @property bool|int $sessionCookieSecure Use secure cookies when on HTTPS? When enabled, separate sessions will be maintained for HTTP vs. HTTPS. Good for security but tradeoff is login session may be lost when switching (default=1 or true). #pw-group-session
+ * @property null|string $sessionCookieDomain Domain to use for sessions, which enables a session to work across subdomains, or NULL to disable (default/recommended). #pw-group-session
  * @property bool|callable $sessionAllow Are sessions allowed? Typically boolean true, unless provided a callable function that returns boolean. See /wire/config.php for an example.  #pw-group-session
  * @property int $sessionExpireSeconds How many seconds of inactivity before session expires? #pw-group-session
  * @property bool $sessionChallenge Should login sessions have a challenge key? (for extra security, recommended) #pw-group-session
- * @property bool $sessionFingerprint Should login sessions be tied to IP and user agent? May conflict with dynamic IPs. #pw-group-session
+ * @property bool $sessionFingerprint Should login sessions be tied to IP and user agent? 0 or false: Fingerprint off. 1 or true: Fingerprint on with default/recommended setting (currently 10). 2: Fingerprint only the remote IP. 4: Fingerprint only the forwarded/client IP (can be spoofed). 8: Fingerprint only the useragent. 10: Fingerprint the remote IP and useragent (default). 12: Fingerprint the forwarded/client IP and useragent. 14: Fingerprint the remote IP, forwarded/client IP and useragent (all). #pw-group-session
  * @property int $sessionHistory Number of session entries to keep (default=0, which means off). #pw-group-session
  * 
  * @property string $prependTemplateFile PHP file in /site/templates/ that will be loaded before each page's template file (default=none) #pw-group-template-files
  * @property string $appendTemplateFile PHP file in /site/templates/ that will be loaded after each page's template file (default=none) #pw-group-template-files
  * @property bool $templateCompile Allow use of compiled templates? #pw-group-template-files
  * 
- * @property string $uploadUnzipCommand Shell command to unzip archives, used by WireUpload class. @deprecated #pw-group-deprecated
+ * @property string $uploadUnzipCommand Shell command to unzip archives, used by WireUpload class. #pw-group-deprecated
  * @property string $uploadTmpDir Optionally override PHP's upload_tmp_dir with your own. Should include a trailing slash. #pw-group-files
  * @property string $uploadBadExtensions Space separated list of file extensions that are always disallowed from uploads. #pw-group-files
  * 
@@ -77,7 +84,7 @@
  * 
  * @property bool $advanced Special mode for ProcessWire system development. Not recommended for regular site development or production use. #pw-group-system
  * @property bool $demo Special mode for demonstration use that causes POST requests to be disabled. Applies to core, but may not be safe with 3rd party modules. #pw-group-system
- * @property bool $debug Special mode for use when debugging or developing a site. Recommended TRUE when site is in development and FALSE when not. #pw-group-system
+ * @property bool|int $debug Special mode for use when debugging or developing a site. Recommended TRUE when site is in development and FALSE when not. Or set to Config::debugVerbose for verbose debug mode. #pw-group-system
  * @property string $debugIf Enable debug mode if condition is met #pw-group-system
  * @property array $debugTools Tools, and their order, to show in debug mode (admin) #pw-group-system
  * 
@@ -92,13 +99,17 @@
  * @property string $dbUser Database user #pw-group-database
  * @property string $dbPass Database password #pw-group-database
  * @property string $dbPort Database port (default=3306) #pw-group-database
- * @property string $dbCharset Default is 'utf8' #pw-group-database
+ * @property string $dbCharset Default is 'utf8' but 'utf8mb4' is also supported. #pw-group-database
+ * @property string $dbEngine Database engine (MyISAM or InnoDB) #pw-group-database
  * @property string $dbSocket Optional DB socket config for sites that need it.  #pw-group-database
  * @property bool $dbCache Whether to allow MySQL query caching. #pw-group-database
  * @property bool $dbLowercaseTables Force any created field_* tables to be lowercase. #pw-group-database
- * @property string $dbEngine Database engine (MyISAM or InnoDB) #pw-group-database
  * @property string $dbPath MySQL database exec path (Path to mysqldump) #pw-group-database
+ * @property array $dbOptions Any additional driver options to pass as $options argument to "new PDO(...)". #pw-group-database
+ * @property array $dbSqlModes Set or adjust SQL mode per MySQL version, where array keys are MySQL version and values are SQL mode command(s). #pw-group-database
  * @property int $dbQueryLogMax Maximum number of queries WireDatabasePDO will log in memory, when debug mode is enabled (default=1000). #pw-group-database
+ * @property string $dbInitCommand Database init command, for PDO::MYSQL_ATTR_INIT_COMMAND. Note placeholder {charset} gets replaced with $config->dbCharset. #pw-group-database
+ * @property bool $dbStripMB4 When dbEngine is not utf8mb4 and this is true, we will attempt to remove 4-byte characters (like emoji) from inserts when possible. Note that this adds some overhead. #pw-group-database
  * 
  * @property array $pageList Settings specific to Page lists. #pw-group-modules
  * @property array $pageEdit Settings specific to Page editors. #pw-group-modules
@@ -114,6 +125,9 @@
  * @property array $preloadCacheNames Cache names to preload at beginning of request #pw-group-system
  * @property bool $allowExceptions Allow Exceptions to propagate? (default=false, specify true only if you implement your own exception handler) #pw-group-system
  * @property bool $usePoweredBy Use the x-powered-by header? Set to false to disable. #pw-group-system
+ * @property bool $useFunctionsAPI Allow most API variables to be accessed as functions? (see /wire/core/FunctionsAPI.php) #pw-group-system
+ * @property bool $useMarkupRegions Enable support for front-end markup regions? #pw-group-system
+ * @property int $lazyPageChunkSize Chunk size for for $pages->findMany() calls. #pw-group-system
  * 
  * @property string $userAuthSalt Salt generated at install time to be used as a secondary/non-database salt for the password system. #pw-group-session
  * @property string $userAuthHashType Default is 'sha1' - used only if Blowfish is not supported by the system. #pw-group-session
@@ -125,29 +139,35 @@
  * @property int $inputfieldColumnWidthSpacing Used by some admin themes to commmunicate to InputfieldWrapper at runtime. #pw-internal
  * @property bool $debugMarkupQA Set to true to make the MarkupQA class report verbose debugging messages (to superusers). #pw-internal
  * 
- * @property int $rootPageID ID of homepage (usually 1) #pw-group-system-IDs
- * @property int $adminRootPageID ID of admin root page #pw-group-system-IDs
- * @property int $trashPageID #pw-group-system-IDs
- * @property int $loginPageID #pw-group-system-IDs
- * @property int $http404PageID #pw-group-system-IDs
- * @property int $usersPageID #pw-group-system-IDs
+ * @property int $rootPageID Page ID of homepage (usually 1) #pw-group-system-IDs
+ * @property int $adminRootPageID Page ID of admin root page #pw-group-system-IDs
+ * @property int $trashPageID Page ID of the trash page. #pw-group-system-IDs
+ * @property int $loginPageID Page ID of the admin login page. #pw-group-system-IDs
+ * @property int $http404PageID Page ID of the 404 “page not found” page. #pw-group-system-IDs
+ * @property int $usersPageID Page ID of the page having users as children. #pw-group-system-IDs
  * @property array $usersPageIDs Populated if multiple possible users page IDs (parent for users pages) #pw-group-system-IDs
- * @property int $rolesPageID #pw-group-system-IDs
- * @property int $permissionsPageID #pw-group-system-IDs
- * @property int $guestUserPageID #pw-group-system-IDs
- * @property int $superUserPageID #pw-group-system-IDs
- * @property int $guestUserRolePageID #pw-group-system-IDs
- * @property int $superUserRolePageID #pw-group-system-IDs
- * @property int $userTemplateID #pw-group-system-IDs
+ * @property int $rolesPageID Page ID of the page having roles as children. #pw-group-system-IDs
+ * @property int $permissionsPageID Page ID of the page having permissions as children. #pw-group-system-IDs
+ * @property int $guestUserPageID Page ID of the guest (default/not-logged-in) user. #pw-group-system-IDs
+ * @property int $superUserPageID Page ID of the original superuser (created during installation). #pw-group-system-IDs
+ * @property int $guestUserRolePageID Page ID of the guest user role (inherited by all users, not just guest). #pw-group-system-IDs
+ * @property int $superUserRolePageID Page ID of the superuser role. #pw-group-system-IDs
+ * @property int $userTemplateID Template ID of the user template. #pw-group-system-IDs
  * @property array $userTemplateIDs Array of template IDs when multiple allowed for users.  #pw-group-system-IDs
- * @property int $roleTemplateID #pw-group-system-IDs
- * @property int $permissionTemplateID #pw-group-system-IDs
- * @property int $externalPageID ID of page assigned to $page API variable when externally bootstrapped #pw-group-system-IDs
- * @property array $preloadPageIDs IDs of pages that will be preloaded at beginning of request #pw-group-system-IDs
- * @property int $installed Timestamp of when this PW was installed, set automatically for compatibility detection. #pw-group-system
+ * @property int $roleTemplateID Template ID of the role template. #pw-group-system-IDs
+ * @property int $permissionTemplateID Template ID of the permission template. #pw-group-system-IDs
+ * @property int $externalPageID Page ID of page assigned to $page API variable when externally bootstrapped #pw-group-system-IDs
+ * @property array $preloadPageIDs Page IDs of pages that will always be preloaded at beginning of request #pw-group-system-IDs
+ * @property int $installed Timestamp of when this PW was installed, set automatically by the installer for future compatibility detection. #pw-group-system
  *
  */
 class Config extends WireData {
+
+	/**
+	 * Constant for verbose debug mode (uses more memory)
+	 * 
+	 */
+	const debugVerbose = 2;
 
 	/**
 	 * Get URL for requested resource or module
@@ -211,7 +231,7 @@ class Config extends WireData {
 	 * @return null|string
 	 *
 	 */
-	public function paths($for) { return $this->paths($for); }
+	public function paths($for) { return $this->path($for); }
 
 	/**
 	 * List of config keys that are also exported in javascript

@@ -444,8 +444,114 @@ interface LanguagesValueInterface {
 }
 
 /**
+ * Interface used to indicate that the Fieldtype supports multiple languages
+ *
+ */
+interface FieldtypeLanguageInterface {
+	/*
+	 * This interface is symbolic only and doesn't require any additional methods, 
+	 * however you do need to add an 'implements FieldtypeLanguageInterface' when defining your class. 
+	 * 
+	 */
+}
+
+/**
+ * Interface for objects that carry a Field value for a Page
+ * 
+ * Optional, but enables Page to do some of the work rather than the Fieldtype
+ *
+ */
+interface PageFieldValueInterface {
+	
+	/**
+	 * Get or set formatted state
+	 * 
+	 * @param bool|null $set Specify bool to set formatted state or omit to retrieve formatted state
+	 * @return bool
+	 * 
+	 */
+	public function formatted($set = null);
+
+	/**
+	 * Set the Page
+	 * 
+	 * @param Page $page
+	 * 
+	 */
+	public function setPage(Page $page);
+
+	/**
+	 * Set the Field
+	 * 
+	 * @param Field $field
+	 * 
+	 */
+	public function setField(Field $field);
+
+	/**
+	 * Get the page or null if not set
+	 * 
+	 * @return Page|null
+	 * 
+	 */
+	public function getPage();
+
+	/**
+	 * Get the field or null if not set
+	 * 
+	 * @return Field|null
+	 * 
+	 */
+	public function getField();
+}
+
+/**
+ * Interface for tracking runtime events
+ *
+ */
+interface WireProfilerInterface {
+	
+	/**
+	 * Start profiling an event
+	 * 
+	 * Return the event array to be used for stop profiling
+	 * 
+	 * @param string $name Name of event in format "method" or "method.id" or "something"
+	 * @param Wire|object|string|null Source of event (may be object instance)
+	 * @param array $data
+	 * @return mixed Event to be used for stop call
+	 * 
+	 */
+	public function start($name, $source = null, $data = array()); 
+
+	/**
+	 * Stop profiling an event
+	 * 
+	 * @param array|object|string $event Event returned by start() 
+	 * @return void
+	 * 
+	 */
+	public function stop($event);
+
+	/**
+	 * End of request maintenance
+	 * 
+	 * @return void
+	 * 
+	 */
+	public function maintenance();
+}
+
+/**
  * Inputfields that implement this interface always have a $value attribute that is an array
  *
  */
 interface InputfieldHasArrayValue { }
+
+/**
+ * Inputfield that has a sortable value (usually in addition to InputfieldHasArrayValue)
+ *
+ */
+interface InputfieldHasSortableValue { }
+
 

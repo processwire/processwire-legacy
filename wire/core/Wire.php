@@ -14,9 +14,12 @@
  * modifying arguments or return values. Several other hook methods are also provided for Wire derived 
  * classes that are hooking into others. 
  * #pw-body
- * #pw-order-groups common,identification,hooks,notices,changes,hooker
+ * #pw-order-groups common,identification,hooks,notices,changes,hooker,api-helpers
+ * #pw-summary-api-helpers Shortcuts to ProcessWire API variables. Access without any arguments returns the API variable. Some support arguments as shortcuts to methods in the API variable.
+ * #pw-summary-changes Methods to support tracking and retrieval of changes made to the object.
+ * #pw-summary-hooks Methods for managing hooks for an object instance or class. 
  * 
- * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
+ * ProcessWire 2.8.x, Copyright 2017 by Ryan Cramer
  * https://processwire.com
  * 
  * #pw-use-constants
@@ -50,10 +53,36 @@
  * @property WireMailTools $mail #pw-internal
  * @property WireFileTools $files #pw-internal
  * 
- * @method changed(string $what) See Wire::___changed()
+ * @method changed(string $what, $old = null, $new = null) See Wire::___changed()
  * @method log($str = '', array $options = array()) See Wire::___log()
  * @method callUnknown($method, $arguments) See Wire::___callUnknown()
  * @method Wire trackException(\Exception $e, $severe = true, $text = null)
+ * 
+ * The following map API variables to function names and apply only if another function in the class does not 
+ * already have the same name, which would override. All defined API variables can be accessed as functions 
+ * that return the API variable, whether documented below or not. 
+ * 
+ * @method Pages|PageArray|Page|NullPage pages($selector = '') Access the $pages API variable as a function. #pw-group-api-helpers
+ * @method Page|Mixed page($key = '', $value = null) Access the $page API variable as a function. #pw-group-api-helpers
+ * @method Config|mixed config($key = '', $value = null) Access the $config API variable as a function. #pw-group-api-helpers
+ * @method Modules|Module|ConfigurableModule|null modules($name = '') Access the $modules API variable as a function. #pw-group-api-helpers
+ * @method User|mixed user($key = '', $value = null) Access the $user API variable as a function. #pw-group-api-helpers
+ * @method Users|PageArray|User|mixed users($selector = '') Access the $users API variable as a function. #pw-group-api-helpers
+ * @method Session|mixed session($key = '', $value = null) Access the $session API variable as a function.  #pw-group-api-helpers
+ * @method Field|Fields|null fields($name = '') Access the $fields API variable as a function.  #pw-group-api-helpers
+ * @method Templates|Template|null templates($name = '') Access the $templates API variable as a function. #pw-group-api-helpers
+ * @method WireDatabasePDO database() Access the $database API variable as a function.  #pw-group-api-helpers
+ * @method Permissions|Permission|PageArray|null|NullPage permissions($selector = '') Access the $permissions API variable as a function.  #pw-group-api-helpers
+ * @method Roles|Role|PageArray|null|NullPage roles($selector = '') Access the $roles API variable as a function.  #pw-group-api-helpers
+ * @method Sanitizer|string|int|array|null|mixed sanitizer($name = '', $value = '') Access the $sanitizer API variable as a function.  #pw-group-api-helpers
+ * @method WireDateTime|string|int datetime($format = '', $value = '') Access the $datetime API variable as a function.  #pw-group-api-helpers
+ * @method WireFileTools files() Access the $files API variable as a function.  #pw-group-api-helpers
+ * @method WireCache|string|array|PageArray|null cache($name = '', $expire = null, $func = null) Access the $cache API variable as a function.  #pw-group-api-helpers
+ * @method Languages|Language|NullPage|null languages($name = '') Access the $languages API variable as a function.  #pw-group-api-helpers
+ * @method WireInput|WireInputData|array|string|int|null input($type = '', $key = '', $sanitizer = '') Access the $input API variable as a function.  #pw-group-api-helpers
+ * @method WireInputData|string|int|array|null inputGet($key = '', $sanitizer = '') Access the $input->get() API variable as a function.  #pw-group-api-helpers
+ * @method WireInputData|string|int|array|null inputPost($key = '', $sanitizer = '') Access the $input->post() API variable as a function.  #pw-group-api-helpers
+ * @method WireInputData|string|int|array|null inputCookie($key = '', $sanitizer = '') Access the $input->cookie() API variable as a function.  #pw-group-api-helpers
  * 
  */
 
@@ -338,14 +367,54 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * 
 	 * #pw-internal
 	 * 
-	 * @param $method
-	 * @param $arguments
+	 * @param string $method
+	 * @param array $arguments
 	 * @return mixed
-	 * @internal
 	 * 
 	 */
 	public function _callMethod($method, $arguments) {
-		return call_user_func_array(array($this, $method), $arguments);
+		$qty = $arguments ? count($arguments) : 0;
+		$result = null;
+		switch($qty) {
+			case 0:
+				$result = $this->$method();
+				break;
+			case 1:
+				$result = $this->$method($arguments[0]);
+				break;
+			case 2:
+				$result = $this->$method($arguments[0], $arguments[1]);
+				break;
+			case 3:
+				$result = $this->$method($arguments[0], $arguments[1], $arguments[2]);
+				break;
+			default:
+				$result = call_user_func_array(array($this, $method), $arguments);
+		}
+		return $result;
+	}
+
+	/**
+	 * Call a hook method (optimization when it's known for certain the method exists)
+	 * 
+	 * #pw-internal
+	 * 
+	 * @param string $method Method name, without leading "___"
+	 * @param array $arguments
+	 * @return mixed
+	 * 
+	 */
+	public function _callHookMethod($method, array $arguments = array()) {
+		if(method_exists($this, $method)) {
+			return $this->_callMethod($method, $arguments);
+		}
+		$hooks = $this->wire('hooks');
+		if($hooks->isMethodHooked($this, $method)) {
+			$result = $hooks->runHooks($this, $method, $arguments);
+			return $result['return'];
+		} else {
+			return $this->_callMethod("___$method", $arguments);
+		}
 	}
 
 	/**
@@ -371,11 +440,45 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 		$hooks = $this->wire('hooks');
 		if($hooks) {
 			$result = $hooks->runHooks($this, $method, $arguments);
-			if(!$result['methodExists'] && !$result['numHooksRun']) return $this->callUnknown($method, $arguments);
+			if(!$result['methodExists'] && !$result['numHooksRun']) {
+				$result = $this->_callWireAPI($method, $arguments);
+				if(!$result) return $this->callUnknown($method, $arguments);
+			}
 		} else {
-			return $this->___callUnknown($method, $arguments);
+			$result = $this->_callWireAPI($method, $arguments);
+			if(!$result) return $this->___callUnknown($method, $arguments);
 		}
 		return $result['return'];
+	}
+
+	/**
+	 * Helper to __call() method that maps a call to an API variable when appropriate
+	 * 
+	 * @param string $method
+	 * @param array $arguments
+	 * @return array|bool
+	 * @internal
+	 * 
+	 */
+	protected function _callWireAPI($method, $arguments) {
+		$var = $this->_wire ? $this->_wire->fuel()->$method : null;
+		if(!$var) return false;
+		// requested method maps to an API variable
+		$result = array('return' => null);
+		$funcName = 'wire' . ucfirst($method);
+		if(__NAMESPACE__) $funcName = __NAMESPACE__ . "\\$funcName";
+		if(count($arguments) && function_exists($funcName)) {
+			// a function exists with this API var name
+			$wire = ProcessWire::getCurrentInstance();
+			// ensure function call maps to this PW instance
+			if($wire !== $this->_wire) ProcessWire::setCurrentInstance($this->_wire);
+			$result['return'] = call_user_func_array($funcName, $arguments);
+			if($wire !== $this->_wire) ProcessWire::setCurrentInstance($wire);
+		} else {
+			// if no arguments provided, just return API var
+			$result['return'] = $var;
+		}
+		return $result;
 	}
 
 	/**
@@ -656,6 +759,10 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * This enables you to add a new accessible property to an existing object, which will execute
 	 * your hook implementation method when called upon. 
 	 * 
+	 * Note that adding a hook with this just makes it possible to call the hook as a property. 
+	 * Any hook property you add can also be called as a method, i.e. `$obj->foo` and `$obj->foo()`
+	 * are the same.
+	 * 
 	 * ~~~~~
 	 * // Adding a hook property
 	 * $wire->addHookProperty('Page::lastModifiedStr', function($event) {
@@ -893,7 +1000,13 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 			}
 		
 			if(is_null($old) || is_null($new) || $lastValue !== $new) {
-				$this->changed($what, $old, $new); // triggers ___changed hook
+				/** @var WireHooks $hooks */
+				$hooks = $this->wire('hooks');
+				if(($hooks && $hooks->isHooked('changed')) || !$hooks) {
+					$this->changed($what, $old, $new); // triggers ___changed hook
+				} else {
+					$this->___changed($what, $old, $new); 
+				}
 			}
 			
 			if($this->trackChanges & self::trackChangesValues) {
@@ -1430,8 +1543,6 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	/**
 	 * ProcessWire instance
 	 *
-	 * This will replace static fuel in PW 3.0
-	 *
 	 * @var ProcessWire|null
 	 *
 	 */
@@ -1445,7 +1556,6 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * #pw-internal
 	 *
 	 * @param ProcessWire $wire
-	 * @return $this
 	 *
 	 */
 	public function setWire(ProcessWire $wire) {

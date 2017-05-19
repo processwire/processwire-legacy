@@ -1,16 +1,40 @@
 <?php 
 
+require_once(PROCESSWIRE_CORE_PATH . "Selector.php"); 
+
 /**
  * ProcessWire Selectors
  *
- * Processes a Selector string and can then be iterated to retrieve each resulting Selector object.
+ * #pw-summary Processes a selector string into a WireArray of Selector objects. 
+ * #pw-summary-static-helpers Static helper methods useful in analyzing selector strings outside of this class. 
+ * #pw-body = 
+ * This Selectors class is used internally by ProcessWire to provide selector string (and array) matching throughout the core.
+ * 
+ * ~~~~~
+ * $selectors = new Selectors("sale_price|retail_price>100, currency=USD|EUR");
+ * if($selectors->matches($page)) {
+ *   // selector string matches the given $page (which can be any Wire-derived item)
+ * }
+ * ~~~~~
+ * ~~~~~
+ * // iterate and display what's in this Selectors object
+ * foreach($selectors as $selector) {
+ *   echo "<p>";
+ *   echo "Field(s): " . implode('|', $selector->fields) . "<br>"; 
+ *   echo "Operator: " . $selector->operator . "<br>"; 
+ *   echo "Value(s): " . implode('|', $selector->values) . "<br>";
+ *   echo "</p>";
+ * }
+ * ~~~~~
+ * #pw-body
+ * 
+ * @link https://processwire.com/api/selectors/ Official Selectors Documentation
+ * @method Selector[] getIterator()
  * 
  * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
  * https://processwire.com
  *
  */
-
-require_once(PROCESSWIRE_CORE_PATH . "Selector.php"); 
 
 class Selectors extends WireArray {
 
@@ -104,6 +128,11 @@ class Selectors extends WireArray {
 	/**
 	 * Set the selector string or array (if not set already from the constructor)
 	 * 
+	 * ~~~~~
+	 * $selectors = new Selectors();
+	 * $selectors->init("sale_price|retail_price>100, currency=USD|EUR");
+	 * ~~~~~
+	 * 
 	 * @param string|array $selector
 	 * 
 	 */
@@ -120,6 +149,8 @@ class Selectors extends WireArray {
 	/**
 	 * Set the selector string 
 	 * 
+	 * #pw-internal
+	 * 
 	 * @param string $selectorStr
 	 * 
 	 */
@@ -130,6 +161,8 @@ class Selectors extends WireArray {
 	
 	/**
 	 * Import items into this WireArray.
+	 * 
+	 * #pw-internal
 	 * 
 	 * @throws WireException
 	 * @param string|WireArray $items Items to import.
@@ -148,6 +181,8 @@ class Selectors extends WireArray {
 	/**
 	 * Per WireArray interface, return true if the item is a Selector instance
 	 * 
+	 * #pw-internal
+	 * 
 	 * @param Selector $item
 	 * @return bool
 	 *
@@ -158,6 +193,8 @@ class Selectors extends WireArray {
 
 	/**
 	 * Per WireArray interface, return a blank Selector
+	 * 
+	 * #pw-internal
 	 *
 	 */
 	public function makeBlankItem() {
@@ -169,6 +206,8 @@ class Selectors extends WireArray {
 	 *
 	 * Static since there may be multiple instances of this Selectors class at runtime. 
 	 * See Selector.php 
+	 * 
+	 * #pw-internal
 	 *
 	 * @param string $operator
 	 * @param string $class
@@ -184,6 +223,10 @@ class Selectors extends WireArray {
 
 	/**
 	 * Return array of all valid operator characters
+	 * 
+	 * #pw-group-static-helpers
+	 * 
+	 * @return array
 	 *
 	 */
 	static public function getOperatorChars() {
@@ -192,6 +235,8 @@ class Selectors extends WireArray {
 
 	/**
 	 * Does the given string have an operator in it? 
+	 * 
+	 * #pw-group-static-helpers
 	 *
 	 * @param string $str
 	 * @return bool
@@ -247,50 +292,93 @@ class Selectors extends WireArray {
 	}
 
 	/**
-	 * Does the given string start with a selector? 
+	 * Is the give string a Selector string?
 	 *
-	 * Meaning string starts with [field][operator] like "field="
+	 * #pw-group-static-helpers
 	 *
-	 * @param string $str
+	 * @param string $str String to check for selector(s)
 	 * @return bool
 	 *
 	 */
 	static public function stringHasSelector($str) {
 		
+		if(!self::stringHasOperator($str)) return false;
+		
 		$has = false;
-
-		if(!self::stringHasOperator($str)) {
-			
-			// default: has=false
-			
-		} else if(preg_match('/^!?([-._a-zA-Z0-9|]+)([' . implode('', self::getOperatorChars()) . ']+)/', $str, $matches)) {
-
-			$field = $matches[1]; 
-			$operator = $matches[2]; 
-
-			if(in_array($field[0], array('-', '.', '|'))) {
-				// fields can't start with a dash or a period or a pipe
-				$has = false; 
-			} else if(!isset(self::$selectorTypes[$operator])) {
-				// if it's not an operator we recognize then abort
-				$has = false; 
-			} else {
-				// if we made it here, then we've found a selector
-				$has = true; 
+		$alphabet = 'abcdefghijklmnopqrstuvwxyz';
+	
+		// replace characters that are allowed but aren't useful here
+		if(strpos($str, '=(') !== false) $str = str_replace('=(', '=1,', $str);
+		$str = str_replace(array('!', '(', ')', '@', '.', '|', '_'), '', trim(strtolower($str)));
+	
+		// flatten sub-selectors
+		$pos = strpos($str, '[');
+		if($pos && strrpos($str, ']') > $pos) {
+			$str = str_replace(array(']', '=[', '<[', '>['), array('', '=1,', '<2,', '>3,'), $str);
+		}
+		$str = rtrim($str, ", ");
+		
+		// first character must match alphabet
+		if(strpos($alphabet, substr($str, 0, 1)) === false) return false;
+		
+		$operatorChars = implode('', self::getOperatorChars());
+		
+		if(strpos($str, ',')) {
+			// split the string into all key=value components and check each individually
+			$inQuote = '';
+			$cLast = '';
+			// replace comments in quoted values so that they aren't considered selector boundaries
+			for($n = 0; $n < strlen($str); $n++) {
+				$c = $str[$n];
+				if($c === ',') {
+					// commas in quoted values are replaced with semicolons
+					if($inQuote) $str[$n] = ';';
+				} else if(($c === '"' || $c === "'") && $cLast != "\\") {
+					if($inQuote && $inQuote === $c) {
+						$inQuote = ''; // end quote
+					} else if(!$inQuote) {
+						$inQuote = $c; // start quote
+					}
+				}
+				$cLast = $c;
 			}
+			$parts = explode(',', $str);
+		} else {
+			// outside of verbose mode, only the first apparent selector is checked
+			$parts = array($str);
+		}
+		
+		// check each key=value component
+		foreach($parts as $part) {
+			$has = preg_match('/^[a-z][a-z0-9]*([' . $operatorChars . ']+)(.*)$/', trim($part), $matches);
+			if($has) {
+				$operator = $matches[1];
+				$value = $matches[2];
+				if(!isset(self::$selectorTypes[$operator])) {
+					$has = false;
+				} else if(self::stringHasOperator($value) && $value[0] != '"' && $value[0] != "'") {
+					// operators not allowed in values unless quoted
+					$has = false;
+				}
+			}
+			if(!$has) break;
 		}
 		
 		return $has;
 	}
 
-
 	/**
 	 * Create a new Selector object from a field name, operator, and value
+	 * 
+	 * This is mostly for internal use, as the Selectors object already does this when you pass it
+	 * a selector string in the constructor or init() method. 
+	 * 
+	 * #pw-group-advanced
 	 *
-	 * @param string $field
-	 * @param string $operator
-	 * @param string $value
-	 * @return Selector
+	 * @param string $field Field name or names (separated by a pipe)
+	 * @param string $operator Operator, i.e. "="
+	 * @param string $value Value or values (separated by a pipe)
+	 * @return Selector Returns the correct type of `Selector` object that corresponds to the given `$operator`.
 	 * @throws WireException
 	 *
 	 */
@@ -303,6 +391,7 @@ class Selectors extends WireArray {
 				$operator = $op;
 				$not = true;
 			} else {
+				if(is_array($value)) $value = implode('|', $value);
 				$debug = $this->wire('config')->debug ? "field='$field', value='$value', selector: '$this->selectorStr'" : "";
 				throw new WireException("Unknown Selector operator: '$operator' -- was your selector value properly escaped? $debug");
 			}
@@ -315,10 +404,9 @@ class Selectors extends WireArray {
 
 
 	/**
-	 * Given a selector string, return an array of (field, value, operator) for each selector in the strong. 
+	 * Given a selector string, populate to Selector objects in this Selectors instance
 	 *
 	 * @param string $str The string containing a selector (or multiple selectors, separated by commas)
-	 * @return array 
 	 *
 	 */
 	protected function extractString($str) {
@@ -347,7 +435,7 @@ class Selectors extends WireArray {
 				}
 			}
 
-			if($field || strlen("$value")) {
+			if($field || $value || strlen("$value")) {
 				$selector = $this->create($field, $operator, $value);
 				if(!is_null($group)) $selector->group = $group; 
 				if($quote) $selector->quote = $quote; 
@@ -444,7 +532,9 @@ class Selectors extends WireArray {
 	protected function extractValueQuick(&$str, $openingQuote, $closingQuote) {
 		
 		// determine where value ends
-		$commaPos = strpos("$str,", $closingQuote . ','); // "$str," just in case value is last and no trailing comma
+		$offset = 0;
+		if($openingQuote) $offset++; // skip over leading quote
+		$commaPos = strpos("$str,", $closingQuote . ',', $offset); // "$str," just in case value is last and no trailing comma
 		
 		if($commaPos === false && $closingQuote) {
 			// if closing quote and comma didn't match, try to match just comma in case of "something"<space>,
@@ -613,6 +703,8 @@ class Selectors extends WireArray {
 
 	/**
 	 * Given a value string with an "api_var" or "api_var.property" return the string value of the property
+	 * 
+	 * #pw-internal
 	 *
 	 * @param string $value var or var.property
 	 * @return null|string Returns null if it doesn't resolve to anything or a string of the value it resolves to
@@ -634,6 +726,8 @@ class Selectors extends WireArray {
 	 * Set whether or not vars should be parsed
 	 *
 	 * By default this is true, so only need to call this method to disable variable parsing.
+	 * 
+	 * #pw-internal
 	 *
 	 * @param bool $parseVars
 	 *
@@ -644,6 +738,8 @@ class Selectors extends WireArray {
 
 	/**
 	 * Does the given Selector value contain a parseable value?
+	 * 
+	 * #pw-internal
 	 * 
 	 * @param Selector $selector
 	 * @return bool
@@ -665,6 +761,8 @@ class Selectors extends WireArray {
 	 * Does the given value contain an API var reference?
 	 * 
 	 * It is assumed the value was quoted in "[value]", and the quotes are not there now. 
+	 * 
+	 * #pw-internal
 	 *
 	 * @param string $value The value to evaluate
 	 * @return bool
@@ -681,6 +779,47 @@ class Selectors extends WireArray {
 		if(!in_array($name, $this->allowedParseVars)) return false;
 		if(strlen($subname) && $this->wire('sanitizer')->fieldName($subname) !== $subname) return false;
 		return true; 
+	}
+
+	/**
+	 * Return array of all field names referenced in all of the Selector objects here
+	 * 
+	 * @param bool $subfields Default is to allow "field.subfield" fields, or specify false to convert them to just "field".
+	 * @return array Returned array has both keys and values as field names (same)
+	 * 
+	 */
+	public function getAllFields($subfields = true) {
+		$fields = array();
+		foreach($this as $selector) {
+			$field = $selector->field;
+			if(!is_array($field)) $field = array($field);
+			foreach($field as $f) {
+				if(!$subfields && strpos($f, '.')) {
+					list($f, $subfield) = explode('.', $f, 2);
+					if($subfield) {} // ignore
+				}
+				$fields[$f] = $f;
+			}
+		}
+		return $fields;
+	}
+
+	/**
+	 * Return array of all values referenced in all Selector objects here
+	 * 
+	 * @return array Returned array has both keys and values as field values (same)
+	 * 
+	 */
+	public function getAllValues() {
+		$values = array();
+		foreach($this as $selector) {
+			$value = $selector->value;
+			if(!is_array($value)) $value = array($value);
+			foreach($value as $v) {
+				$values[$v] = $v;
+			}
+		}
+		return $values;
 	}
 
 	/**
@@ -757,6 +896,8 @@ class Selectors extends WireArray {
 	
 	/**
 	 * Create this Selectors object from an array
+	 * 
+	 * #pw-internal
 	 *
 	 * @param array $a
 	 * @throws WireException
@@ -883,6 +1024,7 @@ class Selectors extends WireArray {
 				if(isset($data['value'])) throw new WireException("You may not specify both 'value' and 'find' at the same time");
 				// if(!is_array($data['find'])) throw new WireException("Selector 'find' property must be specified as array"); 
 				$find = $data['find'];
+				$data['value'] = array();
 			}
 
 			if(isset($data['whitelist']) && $data['whitelist'] !== null) {
@@ -967,6 +1109,14 @@ class Selectors extends WireArray {
 			$fields[] = $_name;
 		}
 
+		// convert WireArray types to an array of $_values
+		if(count($_values) === 1) {
+			$value = reset($_values);
+			if(is_object($value) && $value instanceof WireArray) {
+				$_values = explode('|', (string) $value);
+			}
+		}
+
 		// determine value(s)
 		foreach($_values as $value) {
 			$_sanitize = $sanitize;
@@ -1017,6 +1167,8 @@ class Selectors extends WireArray {
 	 * - If you need a literal comma, use a double comma ",,".
 	 * - If you need a literal equals, use a double equals "==". 
 	 * 
+	 * #pw-group-static-helpers
+	 * 
 	 * @param string $s
 	 * @return array
 	 * 
@@ -1051,6 +1203,8 @@ class Selectors extends WireArray {
 
 	/**
 	 * Given an assoc array, convert to a key=value selector-style string
+	 * 
+	 * #pw-group-static-helpers
 	 * 
 	 * @param $a
 	 * @return string

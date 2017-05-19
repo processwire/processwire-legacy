@@ -23,6 +23,8 @@
  * 
  * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
  * https://processwire.com
+ * 
+ * @method WireArray and($items = null)
  *
  */
 
@@ -200,16 +202,24 @@ class WireData extends Wire implements \IteratorAggregate, \ArrayAccess {
 	 * $value = $item->data('some_property'); 
 	 * ~~~~~
 	 * 
-	 * @param string $key Property you want to get or set.
-	 * @param mixed $value Optionally specify a value if you want to set rather than get.
-	 * @return mixed|null|$this Returns one of the following: 
+	 * @param string|array $key Property you want to get or set, or associative array of properties you want to set.
+	 * @param mixed $value Optionally specify a value if you want to set rather than get. 
+	 *  Or Specify boolean TRUE if setting an array via $key and you want to overwrite any existing values (rather than merge).
+	 * @return array|WireData|null Returns one of the following: 
 	 *   - `mixed` - Actual value if getting a previously set value. 
 	 *   - `null` - If you are attempting to get a value that has not been set. 
 	 *   - `$this` - If you are setting a value.
 	 */
 	public function data($key = null, $value = null) {
 		if(is_null($key)) return $this->data;
-		if(is_null($value)) {
+		if(is_array($key)) {
+			if($value === true) {
+				$this->data = $key;
+			} else {
+				$this->data = array_merge($this->data, $key);
+			}
+			return $this;
+		} else if(is_null($value)) {
 			return isset($this->data[$key]) ? $this->data[$key] : null;
 		} else {
 			$this->data[$key] = $value; 
@@ -399,15 +409,16 @@ class WireData extends Wire implements \IteratorAggregate, \ArrayAccess {
 	 * 
 	 * #pw-group-retrieval
 	 *
-	 * @param WireArray|WireData|string $items May be any of the following: 
+	 * @param WireArray|WireData|string|null $items May be any of the following: 
 	 *   - `WireData` object (or derivative)
 	 *   - `WireArray` object (or derivative)
 	 *   - Name of any property from this object that returns one of the above. 
+	 *   - Omit argument to simply return this object in a WireArray
 	 * @return WireArray Returns a WireArray of this object *and* the one(s) given. 
 	 * @throws WireException If invalid argument supplied.
 	 *
 	 */
-	public function ___and($items) {
+	public function ___and($items = null) {
 
 		if(is_string($items)) $items = $this->get($items); 
 
@@ -415,13 +426,13 @@ class WireData extends Wire implements \IteratorAggregate, \ArrayAccess {
 			// great, that's what we want
 			$a = clone $items; 
 			$a->prepend($this);
-		} else if($items instanceof WireData) {
+		} else if($items instanceof WireData || is_null($items)) {
 			// single item
 			$className = $this->className(true) . 'Array';
-			if(!class_exists($className)) $className = wireClassName('WireArray', true);		
-			$a = $this->wire(new $className()); 
+			if(!class_exists($className)) $className = wireClassName('WireArray', true);
+			$a = $this->wire(new $className());
 			$a->add($this);
-			$a->add($items); 
+			if($items) $a->add($items);
 		} else {
 			// unknown
 			throw new WireException('Invalid argument provided to WireData::and(...)'); 

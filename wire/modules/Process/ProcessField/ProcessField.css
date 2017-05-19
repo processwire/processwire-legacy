@@ -2,9 +2,10 @@
 	float: left; 
 	margin-right: 1em; 
 	margin-bottom: 1em; 
+	width: 70px;
 }
 
-#columnWidthSlider {
+.InputfieldColumnWidthSlider {
 	float: left;
 	width: 70%; 
 	position: relative;

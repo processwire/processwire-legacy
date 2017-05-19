@@ -10,6 +10,7 @@
  * 
  * @property int $parent_id Limit results to this parent, or if combined with findPagesSelector, the search is performed as $pages->get($parent_id)->find() rather than $pages->find().
  * @property int $template_id Limit results to pages using this template.
+ * @property array $template_ids Limit results to pages using this templates (alternate to the single template_id). 
  * @property string $labelFieldName Field to display in the results. (default=title)
  * @property string $labelFieldFormat Format string to display in the results, overrides labelFieldName when used (default=blank).
  * @property string $searchFields Field(s) to search for text. Separate multiple by a space. (default=title)
@@ -21,15 +22,18 @@
  * @property string $disableChars Autocomplete won't be triggered if input contains any of the characters in this string. (default=blank)
  * @property bool $useAndWords When true, each word will be isolated to a separate searchFields=searchValue, which enables it to duplicate ~= operator behavior while using a %= operator (default=false).
  * @property int $lang_id Force use of this language for results
+ * 
+ * @method string renderList()
+ * @method string renderListItem($label, $value, $class = '')
  *
  */
-class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArrayValue {
+class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArrayValue, InputfieldHasSortableValue {
 
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Page Auto Complete', __FILE__), // Module Title
 			'summary' => __('Multiple Page selection using auto completion and sorting capability. Intended for use as an input field for Page reference fields.', __FILE__), // Module Summary
-			'version' => 111,
+			'version' => 112,
 			);
 	}
 
@@ -45,7 +49,8 @@ class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArra
 		$this->set('parent_id', 0); 
 
 		// limit results to pages using this template
-		$this->set('template_id', 0); 
+		$this->set('template_id', 0);
+		$this->set('template_ids', array()); 
 
 		// field to display in the results
 		$this->set('labelFieldName', 'title'); 
@@ -83,10 +88,18 @@ class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArra
 	
 		// Force Language when applicable
 		$this->set('lang_id', 0);
+	
+		// Whether to allow unpublished pages (null=not set, 0|false=no, 1|true=yes)
+		$this->set('allowUnpub', null);
 	}
 
 	/**
 	 * Render a selected list item 
+	 * 
+	 * @param string $label
+	 * @param string $value
+	 * @param string $class
+	 * @return string
 	 *
 	 */
 	protected function ___renderListItem($label, $value, $class = '') {
@@ -94,7 +107,7 @@ class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArra
 		if(strpos($label, '&') !== false) $label = $this->wire('sanitizer')->unentities($label);
 		$label = $this->wire('sanitizer')->entities($label);
 		$out = 	
-			"\n<li class='ui-state-default$class'>" . 
+			"<li class='ui-state-default$class'>" . 
 			"<i class='fa fa-sort fa-fw'></i> " . 
 			"<span class='itemValue'>$value</span>" . 
 			"<span class='itemLabel'>$label</span> " . 
@@ -105,11 +118,13 @@ class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArra
 
 	/**
 	 * Render the selected items list
+	 * 
+	 * @return string
 	 *
 	 */
 	protected function ___renderList() { 
 
-		$out = "\n<ol id='{$this->id}_items' data-id='{$this->id}' data-name='{$this->name}'>" . 
+		$out = "<ol id='{$this->id}_items' data-id='{$this->id}' data-name='{$this->name}'>" . 
 			$this->renderListItem("Label", "1", "itemTemplate"); 
 		
 		foreach($this->value as $page_id) {
@@ -122,7 +137,7 @@ class InputfieldPageAutocomplete extends Inputfield implements InputfieldHasArra
 			$out .= $this->renderListItem($value, $page->id); 
 		}
 
-		$out .= "\n</ol>";
+		$out .= "</ol>";
 		return $out; 
 	}
 
@@ -228,6 +243,9 @@ _OUT;
 
 	/**
 	 * Convert the CSV string provided in the $input to an array of ints needed for this fieldtype
+	 * 
+	 * @param WireInputData $input
+	 * @return $this
 	 *
 	 */
 	public function ___processInput(WireInputData $input) {
@@ -243,7 +261,11 @@ _OUT;
 			else $value = array();
 		
 		foreach($value as $k => $v) {
-			$value[$k] = (int) $v;
+			if(empty($v)) {
+				unset($value[$k]);
+			} else {
+				$value[$k] = (int) $v;
+			}
 		}
 		
 		$this->attr('value', $value);
@@ -271,12 +293,19 @@ _OUT;
 			}
 		}
 
-		if($this->template_id) {
+		if(count($this->template_ids)) {
+			$selector .= ",templates_id=" . implode('|', $this->template_ids);
+		} else if($this->template_id) {
 			$selector .= ",templates_id={$this->template_id}";
 		}
 		
 		if($this->lang_id) {
 			$selector .= ",lang_id=" . (int) $this->lang_id;
+		}
+		
+		$allowUnpub = $this->getSetting('allowUnpub');
+		if(!is_null($allowUnpub) && !$allowUnpub) {
+			$selector .= ",status<" . Page::statusUnpublished;
 		}
 
 		// allow for full site matches
@@ -336,31 +365,32 @@ _OUT;
 	 */
 	public function ___getConfigInputfields() {
 		$inputfields = parent::___getConfigInputfields();
-		$fieldset = $this->wire('modules')->get('InputfieldFieldset'); 
-		$fieldset->label = $this->_('Autocomplete Advanced Options');
-		$fieldset->collapsed = Inputfield::collapsedYes; 
 
 		$recommended = $this->_('Recommended');
+		/** @var InputfieldRadios $field */
 		$field = $this->modules->get('InputfieldRadios');
 		$field->setAttribute('name', 'operator');
 		$field->label = $this->_('Autocomplete search operator');
 		$field->description = $this->_("The search operator that is used in the API when performing autocomplete matches.");
 		$field->notes = $this->_("If you aren't sure what you want here, leave it set at the default: *="); 
 		$field->required = false;
-		$field->addOption('*=', '*= ' . $this->_("Contains phrase or partial word (using fulltext index) - Recommended")); 
-		$field->addOption('%=', '%= ' . $this->_("Contains phrase or partial word (using LIKE)") . " - $recommended");
-		$field->addOption('~=', '~= ' . $this->_("Contains all the [full] words, in any order")); 
-		$field->addOption('^=', '^= ' . $this->_("Starts with word/phrase")); 
-		$field->addOption('$=', '$= ' . $this->_("Ends with word/phrase")); 
-		$field->addOption('=', '= ' . $this->_("Equals [exact]")); 
+		$field->addOption('*=', '`*= ` ' . $this->_("Contains phrase or partial word (using fulltext index) - Recommended")); 
+		$field->addOption('%=', '`%= ` ' . $this->_("Contains phrase or partial word (using LIKE)") . " - $recommended");
+		$field->addOption('~=', '`~= ` ' . $this->_("Contains all the [full] words, in any order")); 
+		$field->addOption('^=', '`^= ` ' . $this->_("Starts with word/phrase")); 
+		$field->addOption('$=', '`$= ` ' . $this->_("Ends with word/phrase")); 
+		$field->addOption('=', '` = ` ' . $this->_("Equals [exact]")); 
 		$field->attr('value', $this->operator);
 		$field->collapsed = Inputfield::collapsedNo; 
-		$fieldset->add($field);
+		$inputfields->add($field);
 
+		/** @var InputfieldText $field */
 		$field = $this->modules->get('InputfieldText'); 
 		$field->attr('name', 'searchFields'); 
 		$field->label = $this->_('Fields to query for autocomplete');
-		$field->description = $this->_('Enter the names of the fields that should have their text queried for autocomplete matches. Typically this would just be the title field, but you may add others by separating each with a space. Note that this is different from the "Label Field" (above). Here you are specifying what fields will be searched, not what fields will be shown.');
+		$field->description = $this->_('Enter the names of the fields that should have their text queried for autocomplete matches.');
+		$field->description .= ' ' . $this->_('Typically this would just be the title field, but you may add others by separating each with a space.'); 
+		$field->description .= ' ' . $this->_('Note that this is different from the “label field” because you are specifying what fields will be searched, not what fields will be shown.');
 		$field->collapsed = Inputfield::collapsedNo; 
 		$field->attr('value', $this->searchFields);
 		$notes = $this->_('Indexed text fields include:');
@@ -369,9 +399,7 @@ _OUT;
 			$notes .= ' ' . $f->name . ','; 
 		}
 		$field->notes = rtrim($notes, ','); 
-		$fieldset->add($field); 
-
-		$inputfields->add($fieldset); 
+		$inputfields->add($field); 
 
 		return $inputfields; 
 	}

@@ -38,13 +38,59 @@
  */
 class WireInput extends Wire {
 
+	/**
+	 * @var WireInputData|null
+	 * 
+	 */
 	protected $getVars = null;
-	protected $postVars = null;
-	protected $cookieVars = null;
-	protected $whitelist = null;
-	protected $urlSegments = array();
-	protected $pageNum = 1; 
 	
+	/**
+	 * @var WireInputData|null
+	 *
+	 */
+	protected $postVars = null;
+	
+	/**
+	 * @var WireInputData|null
+	 *
+	 */
+	protected $cookieVars = null;
+	
+	/**
+	 * @var WireInputData|null
+	 *
+	 */
+	protected $whitelist = null;
+
+	/**
+	 * @var array
+	 * 
+	 */
+	protected $urlSegments = array();
+
+	/**
+	 * @var int
+	 * 
+	 */
+	protected $pageNum = 1;
+
+	/**
+	 * @var array
+	 * 
+	 */
+	protected $requestMethods = array(
+		'GET' => 'GET',
+		'POST' => 'POST',
+		'HEAD' => 'HEAD',
+		'PUT' => 'PUT',
+		'DELETE' => 'DELETE',
+		'OPTIONS' => 'OPTIONS',
+	);
+
+	/**
+	 * Construct
+	 * 
+	 */
 	public function __construct() {
 		$this->useFuel(false);
 		$this->unregisterGLOBALS();
@@ -443,12 +489,13 @@ class WireInput extends Wire {
 			
 		} else if(isset($_SERVER['REQUEST_URI'])) {
 			// page not yet available, attempt to pull URL from request uri
-			$parts = explode('/', $_SERVER['REQUEST_URI']); 
-			$charset = $config->pageNameCharset;
-			foreach($parts as $part) {
-				$url .= "/" . ($charset === 'UTF8' ? $sanitizer->pageNameUTF8($part) : $sanitizer->pageName($part, false));
-			}
 			$info = parse_url($_SERVER['REQUEST_URI']);
+			$parts = explode('/', $info['path']);
+			$charset = $config->pageNameCharset;
+			foreach($parts as $i => $part) {
+				if($i > 0) $url .= "/";
+				$url .= ($charset === 'UTF8' ? $sanitizer->pageNameUTF8($part) : $sanitizer->pageName($part, false));
+			}
 			if(!empty($info['path']) && substr($info['path'], -1) == '/') {
 				$url = rtrim($url, '/') . '/'; // trailing slash
 			}
@@ -512,15 +559,17 @@ class WireInput extends Wire {
 	 * Return the unsanitized query string that was part of this request, or blank if none
 	 * 
 	 * Note that the returned query string is not sanitized, so if you use it in any output
-	 * be sure to run it through `$sanitizer->entities()` first.
+	 * be sure to run it through `$sanitizer->entities()` first. An optional assoc array
+	 * param can be used to add new GET params or override existing ones.
 	 * 
 	 * #pw-group-URLs
 	 * 
+	 * @param array $overrides Optional assoc array for overriding or adding GET params
 	 * @return string Returns the unsanitized query string
 	 * 
 	 */
-	public function queryString() {
-		return $this->get()->queryString();
+	public function queryString($overrides = array()) {
+		return $this->get()->queryString($overrides);
 	}
 
 	/**
@@ -535,6 +584,34 @@ class WireInput extends Wire {
 	 */
 	public function scheme() {
 		return $this->wire('config')->https ? 'https' : 'http'; 
+	}
+
+	/**
+	 * Return the current request method (i.e. GET, POST, etc.) or blank if not known
+	 * 
+	 * Possible return values are:
+	 * - GET
+	 * - POST
+	 * - HEAD
+	 * - PUT
+	 * - DELETE
+	 * - OPTIONS
+	 * - or blank if not known
+	 * 
+	 * @param string $method Optionally enter the request method to return bool if current method matches
+	 * @return string|bool
+	 * @since 3.0.39
+	 * 
+	 */
+	public function requestMethod($method = '') {
+		if(isset($_SERVER['REQUEST_METHOD'])) {
+			$m = strtoupper($_SERVER['REQUEST_METHOD']);
+			$requestMethod = isset($this->requestMethods[$m]) ? $this->requestMethods[$m] : '';
+		} else {
+			$requestMethod = '';
+		}
+		if($method) return strtoupper($method) === $requestMethod;
+		return $requestMethod; 
 	}
 
 	/**

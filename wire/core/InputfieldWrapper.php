@@ -42,15 +42,15 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 	 *
 	 */
 	static protected $defaultMarkup = array(
-		'list' => "\n<ul {attrs}>\n{out}\n</ul>\n",
-		'item' => "\n\t<li {attrs}>\n{out}\n\t</li>", 
-		'item_label' => "\n\t\t<label class='InputfieldHeader ui-widget-header{class}' for='{for}'>{out}</label>",
-		'item_label_hidden' => "\n\t\t<label class='InputfieldHeader InputfieldHeaderHidden ui-widget-header{class}'><span>{out}</span></label>",
-		'item_content' => "\n\t\t<div class='InputfieldContent ui-widget-content{class}'>\n{out}\n\t\t</div>", 
-		'item_error' => "\n<p class='InputfieldError ui-state-error'><i class='fa fa-fw fa-flash'></i><span>{out}</span></p>",
-		'item_description' => "\n<p class='description'>{out}</p>", 
-		'item_head' => "\n<h2>{out}</h2>", 
-		'item_notes' => "\n<p class='notes'>{out}</p>",
+		'list' => "<ul {attrs}>{out}</ul>",
+		'item' => "<li {attrs}>{out}</li>", 
+		'item_label' => "<label class='InputfieldHeader ui-widget-header{class}' for='{for}'>{out}</label>",
+		'item_label_hidden' => "<label class='InputfieldHeader InputfieldHeaderHidden ui-widget-header{class}'><span>{out}</span></label>",
+		'item_content' => "<div class='InputfieldContent ui-widget-content{class}'>{out}</div>", 
+		'item_error' => "<p class='InputfieldError ui-state-error'><i class='fa fa-fw fa-flash'></i><span>{out}</span></p>",
+		'item_description' => "<p class='description'>{out}</p>", 
+		'item_head' => "<h2>{out}</h2>", 
+		'item_notes' => "<p class='notes'>{out}</p>",
 		'item_icon' => "<i class='fa fa-fw fa-{name}'></i> ",
 		'item_toggle' => "<i class='toggle-icon fa fa-fw fa-angle-down' data-to='fa-angle-down fa-angle-right'></i>", 
 		// ALSO: 
@@ -102,6 +102,14 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 	protected $requiredLabel = '';
 
 	/**
+	 * Whether or not column width is handled internally
+	 * 
+	 * @var bool
+	 * 
+	 */
+	protected $useColumnWidth = true;
+
+	/**
 	 * Construct the Inputfield, setting defaults for all properties
 	 *
 	 */
@@ -119,6 +127,8 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 		if(is_array($settings)) foreach($settings as $key => $value) {
 			if($key == 'requiredLabel') {
 				$this->requiredLabel = $value;
+			} else if($key == 'useColumnWidth') {
+				$this->useColumnWidth = $value;
 			} else {
 				$this->set($key, $value);
 			}
@@ -368,7 +378,7 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 		$_classes = array_merge(self::$defaultClasses, self::$classes);
 		$markup = array();
 		$classes = array();
-		$useColumnWidth = true;
+		$useColumnWidth = $this->useColumnWidth;
 		$renderAjaxInputfield = $this->wire('config')->ajax ? $this->wire('input')->get('renderInputfieldAjax') : null;
 		
 		if(isset($_classes['form']) && strpos($_classes['form'], 'InputfieldFormNoWidths') !== false) {
@@ -409,6 +419,7 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 			
 			$ffOut = $this->renderInputfield($inputfield, $renderValueMode);
 			if(!strlen($ffOut)) continue;
+			$collapsed = (int) $inputfield->getSetting('collapsed');  // retrieve again after render
 			$entityEncodeText = $inputfield->getSetting('entityEncodeText') === false ? false : true;
 			
 			$errorsOut = '';
@@ -503,7 +514,13 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 				if($label || $quietMode) {
 					$for = $inputfield->getSetting('skipLabel') || $quietMode ? '' : $inputfield->attr('id');
 					// if $inputfield has a property of entityEncodeLabel with a value of boolean FALSE, we don't entity encode
-					if($inputfield->getSetting('entityEncodeLabel') !== false) $label = $inputfield->entityEncode($label);
+					$entityEncodeLabel = $inputfield->getSetting('entityEncodeLabel');
+					if(is_int($entityEncodeLabel) && $entityEncodeLabel >= Inputfield::textFormatBasic) {
+						// uses an Inputfield::textFormat constant
+						$label = $inputfield->entityEncode($label, $entityEncodeLabel);
+					} else if($entityEncodeLabel !== false) {
+						$label = $inputfield->entityEncode($label);
+					}
 					$icon = $inputfield->getSetting('icon');
 					$icon = $icon ? str_replace('{name}', $this->wire('sanitizer')->name(str_replace(array('icon-', 'fa-'), '', $icon)), $markup['item_icon']) : ''; 
 					$toggle = $collapsed == Inputfield::collapsedNever ? '' : $markup['item_toggle']; 
@@ -527,20 +544,25 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 					} else if(strpos($label, '{class}') !== false) {
 						$label = str_replace('{class}', '', $label); 
 					}
+				} else {
+					// no header
+					// $inputfield->addClass('InputfieldNoHeader', 'wrapClass'); 
 				}
-				if($useColumnWidth) {
-					$columnWidth = (int) $inputfield->getSetting('columnWidth');
-					$columnWidthAdjusted = $columnWidth + ($columnWidthTotal ? -1 * $columnWidthSpacing : 0);
-					if($columnWidth >= 9 && $columnWidth <= 100) {
-						$ffAttrs['class'] .= ' ' . $classes['item_column_width'];
-						if(!$columnWidthTotal) $ffAttrs['class'] .= ' ' . $classes['item_column_width_first'];
+				$columnWidth = (int) $inputfield->getSetting('columnWidth');
+				$columnWidthAdjusted = $columnWidth + ($columnWidthTotal ? -1 * $columnWidthSpacing : 0);
+				if($columnWidth >= 9 && $columnWidth <= 100) {
+					$ffAttrs['class'] .= ' ' . $classes['item_column_width'];
+					if(!$columnWidthTotal) $ffAttrs['class'] .= ' ' . $classes['item_column_width_first'];
+					if($useColumnWidth) {
 						$ffAttrs['style'] = "width: $columnWidthAdjusted%;";
-						$columnWidthTotal += $columnWidth;
-						//if($columnWidthTotal >= 100 && !$requiredIf) $columnWidthTotal = 0; // requiredIf meant to be a showIf?
-						if($columnWidthTotal >= 100) $columnWidthTotal = 0;
 					} else {
-						$columnWidthTotal = 0;
+						$ffAttrs['data-colwidth'] = "$columnWidthAdjusted%";
 					}
+					$columnWidthTotal += $columnWidth;
+					//if($columnWidthTotal >= 100 && !$requiredIf) $columnWidthTotal = 0; // requiredIf meant to be a showIf?
+					if($columnWidthTotal >= 100) $columnWidthTotal = 0;
+				} else {
+					$columnWidthTotal = 0;
 				}
 				if(!isset($ffAttrs['id'])) $ffAttrs['id'] = 'wrap_' . $inputfield->attr('id'); 
 				$ffAttrs['class'] = str_replace('Inputfield_ ', '', $ffAttrs['class']); 
@@ -899,7 +921,7 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 	 * #pw-internal
 	 *
 	 * @param bool $clear Set to true in order to clear the delayed children list.
-	 * @return array
+	 * @return array|Inputfield[]
 	 *
 	 */
 	public function _getDelayedChildren($clear = false) {

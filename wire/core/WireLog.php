@@ -10,6 +10,8 @@
  *
  * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
  * https://processwire.com
+ * 
+ * @method bool save($name, $text, $options = array())
  *
  */
 
@@ -299,20 +301,23 @@ class WireLog extends Wire {
 	public function lineToEntry($line) {
 		
 		$parts = explode("\t", $line, 4);
-		
+	
 		if(count($parts) == 2) {
 			$entry = array(
-				'date' => $parts[0], 
+				'date' => $parts[0],
 				'user' => '',
 				'url'  => '',
 				'text' => $parts[1]
 			);
 		} else if(count($parts) == 3) {
+			$user = strpos($parts[1], '/') === false ? $parts[1] : '';
+			$url = strpos($parts[2], '://') ? $parts[2] : '';
+			$text = empty($url) ? $parts[2] : '';
 			$entry = array(
-				'date' => $parts[0], 
-				'user' => strpos($parts[1], '/') === false ? $parts[1] : '',
-				'url'  => strpos($parts[1], '/') !== false ? $parts[1] : '',
-				'text' => $parts[2]
+				'date' => $parts[0],
+				'user' => $user,
+				'url'  => $url,
+				'text' => $text
 			);
 		} else {
 			$entry = array(

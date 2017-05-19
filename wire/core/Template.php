@@ -20,6 +20,7 @@
  * @property int $flags Flags (bitmask) assigned to this template. See the flag constants.  #pw-group-identification
  * @property string $ns Namespace found in the template file, or blank if not determined.   #pw-group-identification
  * @property string $pageClass Class for instantiated page objects. Page assumed if blank, or specify class name.  #pw-group-identification
+ * @property int $modified Last modified time for template or template file
  * 
  * Fieldgroup/Fields 
  * 
@@ -458,6 +459,8 @@ class Template extends WireData implements Saveable, Exportable {
 	 */
 	public function set($key, $value) {
 
+		if($key == 'cacheTime') $key = 'cache_time'; // alias
+		
 		if($key == 'flags') { 
 			$this->setFlags($value); 
 
@@ -472,7 +475,7 @@ class Template extends WireData implements Saveable, Exportable {
 				if($fieldgroup) $this->setFieldgroup($fieldgroup); 
 					else $this->error("Unable to load fieldgroup '$value' for template $this->name"); 
 				return $this;
-			} else if($key == 'cache_time' || $key == 'cacheTime') {
+			} else if($key == 'cache_time') {
 				$value = (int) $value; 
 			} else {
 				$value = '';

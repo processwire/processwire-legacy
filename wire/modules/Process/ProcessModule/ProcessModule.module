@@ -188,10 +188,18 @@ class ProcessModule extends Process {
 		sort($moduleNames); 
 
 		foreach($moduleNames as $moduleName) {
+			
 			$info = $this->wire('modules')->getModuleInfoVerbose($moduleName); 
+			
 			if($site && $info['core']) continue; 
 			if($core && !$info['core']) continue; 
-			if($configurable && (!$info['configurable'] || !$info['installed'])) continue; 
+			
+			if($configurable) { 
+				if(!$info['configurable'] || !$info['installed']) continue;
+				$flags = $this->wire('modules')->getFlags($moduleName);
+				if($flags & Modules::flagsNoUserConfig) continue;
+			}
+			
 			if($install) {
 				// exclude already installed modules
 				if($info['installed']) continue; 
@@ -206,6 +214,7 @@ class ProcessModule extends Process {
 			
 			$url = $install ? "installConfirm" : "edit"; 
 			$url .= "?name=$info[name]";
+			if($configurable) $url .= "&collapse_info=1";
 			
 			$data['list'][$_label] = array(
 				'url' => $url,
@@ -366,7 +375,12 @@ class ProcessModule extends Process {
 				$siteModulesArray[$name] = $installed;
 			}
 			
-			if($info['configurable'] && $info['installed']) $configurableArray[$name] = $installed;
+			if($info['configurable'] && $info['installed']) {
+				$flags = $this->modules->getFlags($name);
+				if(!($flags & Modules::flagsNoUserConfig)) {
+					$configurableArray[$name] = $installed;
+				}
+			}
 		}
 
 		$form = $this->modules->get('InputfieldForm');
@@ -532,6 +546,7 @@ class ProcessModule extends Process {
 		$f->description = $this->_('Upload a ZIP file containing module file(s). If you upload a module that is already installed, it will be overwritten with the one you upload.'); 
 		$f->notes = $trustNote; 
 		$f->required = false;
+		$f->noCustomButton = true;
 		$fieldset->add($f);
 		$f = $this->modules->get('InputfieldSubmit');
 		$f->attr('id+name', 'upload');
@@ -549,7 +564,7 @@ class ProcessModule extends Process {
 		$submit = $this->modules->get('InputfieldButton');
 		$submit->attr('href', './?reset=1');
 		$submit->attr('id', 'reset_modules');
-		$submit->attr('class', $submit->attr('class') . ' head_button_clone');
+		$submit->showInHeader();
 		$submit->attr('name', 'reset');
 		$submit->attr('value', $this->labels['reset']);
 		$submit->icon = $fieldset->icon;
@@ -602,7 +617,7 @@ class ProcessModule extends Process {
 
 		foreach($modulesArray as $name => $installed) {
 
-			if(strpos($name, $section) !== 0 || preg_match('/' . $section . '[^A-Z]/', $name)) {
+			if(strpos($name, $section) !== 0 || preg_match('/' . $section . '[^A-Z0-9]/', $name)) {
 				if(!preg_match('/^([A-Za-z][a-z]+)/', $name, $matches)) $this->error(sprintf($this->_('Invalid module name: %s'), $name));
 				if($allowSections || is_null($table)) { 
 					$section = $matches[1];
@@ -634,7 +649,7 @@ class ProcessModule extends Process {
 			if($summary) $summary = "<p class='module-summary'>$summary</p>";
 			$buttons = '';
 			$confirmDeleteJS = "return confirm('" . sprintf($this->_('Delete %s?'), $name) . "')";
-			$confirmInstallJS = "return confirm('" . sprintf($this->_('Installing may cause problems. Are you sure you want to install?'), $name) . "')";
+			$confirmInstallJS = "return confirm('" . sprintf($this->_('Module requirements are not fulfilled so installing may cause problems. Are you sure you want to install?'), $name) . "')";
 			$editUrl = "edit?name={$name}";
 
 			if(!$installed) {
@@ -712,10 +727,12 @@ class ProcessModule extends Process {
 				$editUrl = '#';
 
 			} else if($configurable) {
-
-				$buttons .= 
-					"<button type='button' class='ProcessModuleSettings ui-state-default ui-button'>" . 
-					"<span class='ui-button-text'><i class='fa fa-cog'></i> " . $this->_x('Settings', 'button') . "</span></button>"; // Text for 'Settings' button
+				$flags = $this->modules->getFlags($name);
+				if(!($flags & Modules::flagsNoUserConfig)) {
+					$buttons .=
+						"<button type='button' class='ProcessModuleSettings ui-state-default ui-button'>" .
+						"<span class='ui-button-text'><i class='fa fa-cog'></i> " . $this->_x('Settings', 'button') . "</span></button>"; // Text for 'Settings' button
+				}
 			}
 
 			if($buttons) $buttons = "<small class='buttons'>$buttons</small>";
@@ -1131,7 +1148,11 @@ class ProcessModule extends Process {
 		$out = ''; 
 		$moduleId = $this->modules->getModuleID($moduleName); 
 		$languages = $this->wire('languages');
-		$collapseInfo = $this->wire('input')->get('collapse_info') || $this->wire('input')->get('modal') ? '&collapse_info=1': '';
+		$submitSave = $this->input->post('submit_save_module');
+		$collapseInfo = '';
+		if($submitSave || $this->wire('input')->get('collapse_info') || $this->wire('input')->get('modal')) {
+			$collapseInfo = '&collapse_info=1';
+		}
 		if(!$moduleId) {
 			$this->error("Unknown module"); 
 			return $this->session->redirect('./'); 
@@ -1228,7 +1249,7 @@ class ProcessModule extends Process {
 		if(count($form->children)) {
 			$field = $this->modules->get("InputfieldSubmit"); 
 			$field->attr('name', 'submit_save_module'); 
-			$field->addClass('head_button_clone'); 
+			$field->showInHeader();
 			$field->addActionValue('exit', sprintf($this->_('%s + Exit'), $field->attr('value')), 'times');
 			$form->append($field);
 			
@@ -1253,7 +1274,6 @@ class ProcessModule extends Process {
 		}
 
 		// check for submitted form
-		$submitSave = $this->input->post('submit_save_module');
 		if($submitSave) {
 
 			if(is_null($data)) $data = $this->modules->getModuleConfigData($moduleName);

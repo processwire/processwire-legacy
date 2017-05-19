@@ -7,6 +7,7 @@
  * #pw-summary-traversal For the most part you’ll want to traverse from the parent `Pagefiles` object than these methods.
  * #pw-summary-manipulation Remember to follow up any manipulations with a `$pages->save()` call. 
  * #pw-summary-tags Be sure to see the `Pagefiles::getTag()` and `Pagesfiles::findTag()` methods, which enable you retrieve files by tag.
+ * #pw-use-constructor
  * #pw-body =
  * Pagefile objects are contained by a `Pagefiles` object. 
  * #pw-body
@@ -19,7 +20,8 @@
  * @property-read string $filename full disk path to the file on the server. 
  * @property-read string $name Returns the filename without the path, same as the "basename" property.
  * @property-read string $hash Get a unique hash (for the page) representing this Pagefile.
- * @property-read string $tagsArray Get file tags as an array. #pw-group-tags @since 3.0.17 
+ * @property-read string $tagsArray Get file tags as an array. #pw-group-tags @since 3.0.17
+ * @property int $sort Sort order in database. #pw-group-other
  * @property string $basename Returns the filename without the path.
  * @property string $description Value of the file’s description field (string), if enabled. Note you can also set this property directly.
  * @property string $tags Value of the file’s tags field (string), if enabled. #pw-group-tags
@@ -48,6 +50,8 @@ class Pagefile extends WireData {
 
 	/**
 	 * Reference to the owning collection of Pagefiles
+	 * 
+	 * @var Pagefiles
 	 *
 	 */
 	protected $pagefiles; 
@@ -155,7 +159,7 @@ class Pagefile extends WireData {
 	 *
 	 * @param string $key
 	 * @param mixed $value
-	 * @return $this
+	 * @return Pagefile|WireData
 	 *
 	 */
 	public function set($key, $value) {
@@ -759,7 +763,7 @@ class Pagefile extends WireData {
 	 *
 	 */
 	public function __toString() {
-		return $this->basename; 
+		return (string) $this->basename; 
 	}
 
 	/**

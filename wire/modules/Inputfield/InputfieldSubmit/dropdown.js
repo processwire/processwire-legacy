@@ -23,7 +23,7 @@ var InputfieldSubmitDropdown = {
 		
 		if(!$dropdown.length) return true;
 		
-		$button = $dropdown.data('button');
+		$button = $dropdown.data('pw-button');
 		
 		if($a.hasClass('pw-button-dropdown-default')) {
 			
@@ -31,8 +31,8 @@ var InputfieldSubmitDropdown = {
 			
 		} else {
 			
-			var value = $a.attr('data-dropdown-value');
-			var selector = $dropdown.attr('data-dropdown-input');
+			var value = $a.attr('data-pw-dropdown-value');
+			var selector = $dropdown.attr('data-pw-dropdown-input');
 			
 			if(!value) return true;
 
@@ -76,7 +76,7 @@ var InputfieldSubmitDropdown = {
 	 */
 	initDropdown: function($dropdown, $mainButton) {
 		
-		var $toggleButton = $("<button><i class='fa fa-angle-down'></i></button>")
+		var $toggleButton = $("<button type='button'><i class='fa fa-angle-down'></i></button>")
 			.attr('id', 'pw-dropdown-toggle-' + $mainButton.attr('id'));
 		
 		$mainButton.after($toggleButton);
@@ -92,8 +92,8 @@ var InputfieldSubmitDropdown = {
 		InputfieldSubmitDropdown.dropdownCnt++;
 		var dropdownCntClass = 'pw-button-dropdown-' + InputfieldSubmitDropdown.dropdownCnt;
 
-		$dropdown.addClass('dropdown-menu pw-dropdown-menu shortcuts pw-button-dropdown-init ' + dropdownCntClass);
-		$dropdown.data('button', $mainButton);
+		$dropdown.addClass('pw-dropdown-menu pw-dropdown-menu-rounded pw-button-dropdown-init ' + dropdownCntClass);
+		$dropdown.data('pw-button', $mainButton);
 
 		var $buttonText = $mainButton.find('.ui-button-text');
 		var labelText = $.trim($buttonText.text());
@@ -107,7 +107,7 @@ var InputfieldSubmitDropdown = {
 			}
 			$a.click(InputfieldSubmitDropdown.click);
 		});
-
+		
 		/*
 		 // add first item to be same as default button action
 		 var $li = $('<li></li>');
@@ -126,13 +126,23 @@ var InputfieldSubmitDropdown = {
 
 		$mainButton.addClass('pw-button-dropdown-main');
 		$toggleButton.after($dropdown)
-			.addClass('dropdown-toggle dropdown-toggle-click pw-dropdown-toggle pw-button-dropdown-toggle')
-			.attr('data-dropdown', '.' + dropdownCntClass);
+			.addClass('pw-dropdown-toggle-click pw-dropdown-toggle pw-button-dropdown-toggle')
+			.attr('data-pw-dropdown', '.' + dropdownCntClass);
 		if($mainButton.hasClass('ui-priority-secondary')) $toggleButton.addClass('ui-priority-secondary');
-		if($mainButton.hasClass('head_button_clone')) $toggleButton.addClass('head_button_clone');
+		if($mainButton.hasClass('pw-head-button')) $toggleButton.addClass('pw-head-button');
 
 		$toggleButton.click(function() {
 			return false;
+		}).on('pw-button-dropdown-off', function() {
+			$(this).siblings('.pw-button-dropdown-main')
+				.removeClass('pw-button-dropdown-main')
+				.addClass('pw-button-dropdown-disabled');
+			$(this).hide();
+		}).on('pw-button-dropdown-on', function() {
+			$(this).siblings('.pw-button-dropdown-disabled')
+				.addClass('pw-button-dropdown-main')
+				.removeClass('pw-button-dropdown-disabled')
+			$(this).show();
 		});
 		
 	},
@@ -147,8 +157,8 @@ var InputfieldSubmitDropdown = {
 	 */
 	init: function(buttonSelector, $dropdownTemplate) {
 	
-		// don't use dropdowns when on touch device or in modal window
-		if($('body').hasClass('touch-device') || $('body').hasClass('modal')) {
+		// don't use dropdowns when in modal window
+		if($('body').hasClass('modal')) {
 			$("ul.pw-button-dropdown").hide();
 			return false;
 		}

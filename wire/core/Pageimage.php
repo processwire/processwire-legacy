@@ -6,6 +6,7 @@
  * #pw-summary Represents an image item attached to a page, typically via an Image Fieldtype. 
  * #pw-summary-variations A variation refers to an image that is based upon another (like a resized or cropped version for example). 
  * #pw-order-groups common,resize-and-crop,variations,other
+ * #pw-use-constructor
  * #pw-body = 
  * Pageimage objects are usually contained by a `Pageimages` object, which is a type of `Pagefiles` and `WireArray`. 
  * In addition to the methods and properties below, you'll also want to look at `Pagefile` which this class inherits
@@ -93,9 +94,14 @@ class Pageimage extends Pagefile {
 	protected $error = '';
 
 	/**
-	 * Construct a new Pagefile
+	 * Construct a new Pageimage
+	 * 
+	 * ~~~~~
+	 * // Construct a new Pageimage, assumes that $page->images is a FieldtypeImage Field
+	 * $pageimage = new Pageimage($page->images, '/path/to/file.png');
+	 * ~~~~~
 	 *
-	 * @param Pagefiles $pagefiles 
+	 * @param Pageimages|Pagefiles $pagefiles 
 	 * @param string $filename Full path and filename to this pagefile
 	 * @throws WireException
 	 *
@@ -667,22 +673,36 @@ class Pageimage extends Pagefile {
 	 * @param int|float $width Specify int to return resized image for hidpi, or float (or omit) to return current width at hidpi.
 	 * @param array $options Optional options for use when resizing, see size() method for details.
 	 * 	Or you may specify an int as if you want to return a hidpi width and want to calculate with that width rather than current image width.
-	 * @return int|Pageimage
+	 * @return int|Pageimage|string
 	 * 
 	 */	
 	public function hidpiWidth($width = 0, $options = array()) {
+		
+		if(is_string($width)) {
+			if(ctype_digit("$width")) {
+				$width = (int) $width;
+			} else if($width === "100%") {
+				return $this;
+			} else if(ctype_digit(str_replace(".", "", $width))) {
+				$width = (float) $width;
+			}
+		}
+		
 		if(is_float($width) || $width < 1) {
 			// return hidpi width intended: scale omitted or provided in $width argument
 			$scale = $width;
 			if(!$scale || $scale < 0 || $scale > 1) $scale = 0.5;
+			if(is_string($options) && $options === "100%") return $options;
 			$width = is_array($options) ? 0 : (int) $options;
 			if($width < 1) $width = $this->width();
+			if($width === "100%") return $width;
 			return ceil($width * $scale); 
-		} else if($width) {
+		} else if($width && is_int($width) && $width > 0) {
 			// resize intended
 			if(!is_array($options)) $options = array();
 			return $this->hidpiSize((int) $width, 0, $options);
 		}
+		
 		return 0; // not possible to reach, but pleases the inspection
 	}
 
@@ -734,7 +754,7 @@ class Pageimage extends Pagefile {
 	 */
 	public function maxWidth($n, array $options = array()) {
 		$options['upscaling'] = false;
-		if($this->width() > $n) return $this->width($n); 
+		if($this->width() > $n) return $this->width($n, $options); 
 		return $this;
 	}
 
@@ -756,7 +776,7 @@ class Pageimage extends Pagefile {
 	 */
 	public function maxHeight($n, array $options = array()) {
 		$options['upscaling'] = false;
-		if($this->height() > $n) return $this->height($n); 
+		if($this->height() > $n) return $this->height($n, $options); 
 		return $this;
 	}
 
@@ -775,17 +795,9 @@ class Pageimage extends Pagefile {
 		$w = $this->width();
 		$h = $this->height();
 		if($w >= $h) {
-			if($w > $width && $h > $height) {
-				return $this->size($width, $height, $options);
-			} else {
-				return $this->maxWidth($width, $options);
-			}
+			return $this->maxWidth($width, $options);
 		} else {
-			if($w > $width && $h > $height) {
-				return $this->size($width, $height, $options);
-			} else {
-				return $this->maxHeight($height, $options);
-			}
+			return $this->maxHeight($height, $options);
 		}
 	}
 
@@ -1106,8 +1118,8 @@ class Pageimage extends Pagefile {
 			return false; 
 		}
 		
-		$info['hidpiWidth'] = $this->hidpiWidth(null, $info['width']);
-		$info['hidpiHeight'] = $this->hidpiWidth(null, $info['height']); 
+		$info['hidpiWidth'] = $this->hidpiWidth(0, $info['width']);
+		$info['hidpiHeight'] = $this->hidpiWidth(0, $info['height']); 
 	
 		if(empty($info['crop'])) {
 			// attempt to extract crop info from suffix

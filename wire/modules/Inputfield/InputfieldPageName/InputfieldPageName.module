@@ -13,6 +13,7 @@
  * @property string $checkboxName Leave blank to disable 
  * @property string $checkboxLabel
  * @property string $checkboxValue
+ * @property string $checkboxSuffix
  * @property bool $checkboxChecked 
  *
  */
@@ -58,6 +59,9 @@ class InputfieldPageName extends InputfieldName implements ConfigurableModule {
 		'í' => 'i',
 		'ï' => 'i',
 		'î' => 'i',
+		'ı' => 'i',
+		'İ' => 'i',
+		'ğ' => 'g',
 		'õ' => 'o', 
 		'ò' => 'o',
 		'ó' => 'o',
@@ -71,6 +75,7 @@ class InputfieldPageName extends InputfieldName implements ConfigurableModule {
 		'ç' => 'c',
 		'č' => 'c',
 		'ć' => 'c',
+		'Ç' => 'c',
 		'ď' => 'd',
 		'ĺ' => 'l',
 		'ľ' => 'l',
@@ -79,6 +84,8 @@ class InputfieldPageName extends InputfieldName implements ConfigurableModule {
 		'ŕ' => 'r',
 		'ř' => 'r',
 		'š' => 's',
+		'ş' => 's',
+		'Ş' => 's',
 		'ť' => 't',
 		'ý' => 'y',
 		'ž' => 'z',
@@ -146,6 +153,8 @@ class InputfieldPageName extends InputfieldName implements ConfigurableModule {
 			$this->set('sanitizeMethod', 'pageName');
 		}
 		$this->hasLanguagePageNames = $this->wire('modules')->isInstalled('LanguageSupportPageNames'); 
+		
+		$this->removeClass('InputfieldNoBorder', 'wrapClass'); 
 	}
 
 	public function ___render() {
@@ -286,7 +295,6 @@ class InputfieldPageName extends InputfieldName implements ConfigurableModule {
 
 		if(is_array($data[$name])) {
 			// data already in right save format, but need it to be a string for editing
-			if(empty($replacements)) $replacements = self::$defaultReplacements;
 			$replacements = self::replacementArrayToString($data[$name]);
 
 		} else {

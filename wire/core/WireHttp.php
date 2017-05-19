@@ -5,7 +5,20 @@
  *
  * Provides capability for sending POST/GET requests to URLs
  * 
- * #pw-summary WireHttp enables you to send HTTP requests to URLs, download files, and more. 
+ * #pw-summary WireHttp enables you to send HTTP requests to URLs, download files, and more.
+ * #pw-var $http
+ * #pw-instantiate $http = new WireHttp();
+ * #pw-body = 
+ * ~~~~~
+ * // Get the contents of a URL
+ * $response = $http->get("http://domain.com/path/");
+ * if($response !== false) {
+ *   echo "Successful response: " . $sanitizer->entities($response);
+ * } else {
+ *   echo "HTTP request failed: " . $http->getError();
+ * }
+ * ~~~~~
+ * #pw-body
  * 
  * Thanks to @horst for his assistance with several methods in this class.
  * 
@@ -179,6 +192,14 @@ class WireHttp extends Wire {
 	protected $responseHeaders = array();
 	
 	/**
+	 * Last response headers parsed into key => value properties, where value is always array
+	 *
+	 * Note that keys are always lowercase
+	 *
+	 */
+	protected $responseHeaderArrays = array();
+	
+	/**
 	 * Error messages
 	 *
 	 */
@@ -219,7 +240,7 @@ class WireHttp extends Wire {
 	 * $response = $http->post("http://domain.com/path/", [
 	 *   'foo' => bar',
 	 * ]); 
-	 * if($response) {
+	 * if($response !== false) {
 	 *   echo "Successful response: " . $sanitizer->entities($response); 
 	 * } else {
 	 *   echo "HTTP request failed: " . $http->getError();
@@ -242,9 +263,9 @@ class WireHttp extends Wire {
 	 * ~~~~~
 	 * $http = new WireHttp();
 	 * $response = $http->get("http://domain.com/path/", [
-	 *   'foo' => bar',
+	 *   'foo' => 'bar',
 	 * ]);
-	 * if($response) {
+	 * if($response !== false) {
 	 *   echo "Successful response: " . $sanitizer->entities($response);
 	 * } else {
 	 *   echo "HTTP request failed: " . $http->getError();
@@ -808,10 +829,16 @@ class WireHttp extends Wire {
 	 * Get the last HTTP response headers (associative array)
 	 *
 	 * All headers are translated to `[key => value]` properties in the array. 
-	 * The keys are always lowercase. 
+	 * The keys are always lowercase and the values are always strings. If you 
+	 * need multi-value headers, use the `WireHttp::getResponseHeaderValues()` method
+	 * instead, which returns multi-value headers as arrays. 
+	 *
+	 * This method always returns an associative array of strings, unless you specify the
+	 * `$key` option in which case it will return a string, or NULL if the header is not present. 
 	 *
 	 * @param string $key Optional header name you want to get (if you only need one)
 	 * @return array|string|null
+	 * @see WireHttp::getResponseHeaderValues()
 	 *
 	 */
 	public function getResponseHeaders($key = '') {
@@ -820,6 +847,37 @@ class WireHttp extends Wire {
 			return isset($this->responseHeaders[$key]) ? $this->responseHeaders[$key] : null;
 		}
 		return $this->responseHeaders;
+	}
+
+	/**
+	 * Get last HTTP response headers with multi-value headers as arrays
+	 * 
+	 * Use this method when you want to retrieve headers that can potentially contain multiple-values.
+	 * Note that any code that iterates these values should be able to handle them being either a string or 
+	 * an array. 
+	 * 
+	 * This method always returns an associative array of strings and arrays, unless you specify the 
+	 * `$key` option in which case it can return an array, string, or NULL if the header is not present. 
+	 * 
+	 * @param string $key Optional header name you want to get (if you only need a specific header)
+	 * @param bool $forceArrays If even single-value headers should be arrays, specify true (default=false). 
+	 * @return array|string|null
+	 * 
+	 */
+	public function getResponseHeaderValues($key = '', $forceArrays = false) {
+		if(!empty($key)) {
+			$key = strtolower($key);
+			$value = isset($this->responseHeaderArrays[$key]) ? $this->responseHeaderArrays[$key] : null;
+			if(!$value !== null && count($value) === 1 && !$forceArrays) $value = reset($value);
+		} else if($forceArrays) {
+			$value = $this->responseHeaderArrays;
+		} else {
+			$value = $this->responseHeaders;
+			foreach($this->responseHeaderArrays as $k => $v) {
+				if(count($v) > 1) $value[$k] = $v;
+			}
+		}
+		return $value;
 	}
 	
 	/**
@@ -834,6 +892,7 @@ class WireHttp extends Wire {
 		
 		if(!empty($responseHeader[0])) {
 			list($http, $httpCode, $httpText) = explode(' ', trim($responseHeader[0]), 3); 
+			if($http) {} // ignore
 			$httpCode = (int) $httpCode;
 			$httpText = preg_replace('/[^-_.;() a-zA-Z0-9]/', ' ', $httpText); 
 		} else {
@@ -848,6 +907,8 @@ class WireHttp extends Wire {
 
 		// parsed version
 		$this->responseHeaders = array();
+		$this->responseHeaderArrays = array();
+		
 		foreach($responseHeader as $header) {
 			$pos = strpos($header, ':');
 			if($pos !== false) {
@@ -857,7 +918,12 @@ class WireHttp extends Wire {
 				$key = $header;
 				$value = '';
 			}
-			if(!isset($this->responseHeaders[$key])) $this->responseHeaders[$key] = $value;
+			if(!isset($this->responseHeaders[$key])) {
+				$this->responseHeaders[$key] = $value;
+				$this->responseHeaderArrays[$key] = array($value); 
+			} else {
+				$this->responseHeaderArrays[$key][] = $value;
+			}
 		}
 	
 		/*
@@ -888,7 +954,7 @@ class WireHttp extends Wire {
 	 *   - `content-type`: {content-type} (replaced with actual content type)
 	 *   - `content-transfer-encoding`: binary
 	 *   - `content-length`: {filesize} (replaced with actual filesize)
-	 *	 - To remove a header completely, make its value NULL and it won't be sent.
+	 *   - To remove a header completely, make its value NULL and it won't be sent.
 	 * @throws WireException
 	 *
 	 */

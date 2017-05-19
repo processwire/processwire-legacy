@@ -9,6 +9,7 @@
  * Instances of HookEvent are passed to Hook handlers when their requested method has been called.
  * 
  * #pw-summary HookEvent is a type provided to hook functions with information about the event.
+ * #pw-var $event
  * #pw-body =
  * ~~~~~~
  * // Example
@@ -23,7 +24,7 @@
  *
  * @property-read Wire|WireData|WireArray|Module $object Instance of the object where the Hook event originated. 
  * @property-read string $method The name of the method that was called to generate the Hook event. 
- * @property-read array $arguments A numerically indexed array of the arguments sent to the above mentioned method. 
+ * @property array $arguments A numerically indexed array of the arguments sent to the above mentioned method. 
  * @property mixed $return Applicable only for 'after' or ('replace' + 'before' hooks), contains the value returned by the above mentioned method. The hook handling method may modify this return value. 
  * @property bool $replace Set to boolean true in a 'before' hook if you want to prevent execution of the original hooked function. In such a case, your hook is replacing the function entirely. Not recommended, so be careful with this.
  * @property array $options An optional array of user-specified data that gets sent to the hooked function. The hook handling method may access it from $event->data. Also includes all the default hook properties. 
@@ -42,17 +43,23 @@ class HookEvent extends WireData {
 
 	/**
 	 * Construct the HookEvent and establish default values
+	 * 
+	 * @param array $eventData Optional event data to start with
 	 *
 	 */
-	public function __construct() {
-		$this->set('object', null); 
-		$this->set('method', '');
-		$this->set('arguments', array()); 
-		$this->set('return', null); 
-		$this->set('replace', false); 
-		$this->set('options', array()); 
-		$this->set('id', ''); 
-		$this->set('cancelHooks', false);
+	public function __construct(array $eventData = array()) {
+		$data = array(
+			'object' => null,
+			'method' => '',
+			'arguments' => array(),
+			'return' => null,
+			'replace' => false,
+			'options' => array(),
+			'id' => '',
+			'cancelHooks' => false
+		);
+		if(!empty($eventData)) $data = array_merge($data, $eventData);
+		$this->data = $data;
 	}
 
 	/**
@@ -201,7 +208,7 @@ class HookEvent extends WireData {
 	 * ~~~~~
 	 * 
 	 * @param string|null $hookId
-	 * @return $this
+	 * @return HookEvent|WireData $this
 	 * 
 	 */
 	public function removeHook($hookId) {
@@ -225,7 +232,6 @@ class HookEvent extends WireData {
 		$s = rtrim($s, ", ") . ")";
 		return $s; 	
 	}
-
 
 }
 

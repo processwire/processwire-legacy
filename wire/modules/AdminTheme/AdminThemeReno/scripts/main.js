@@ -24,12 +24,15 @@ var ProcessWireAdminTheme = {
 		var $body = $("body"); 
 		var $html = $("html"); 
 		if($body.hasClass('hasWireTabs') && $("ul.WireTabs").length == 0) $body.removeClass('hasWireTabs'); 
-		$('#content').removeClass('fouc_fix'); // FOUC fix, deprecated
+		$('#content').removeClass('pw-fouc-fix'); // FOUC fix, deprecated
 		$body.removeClass('pw-init').addClass('pw-ready'); 
 		$html.removeClass('pw-init').addClass('pw-ready'); 
 		// this.browserCheck();
-		$("#notices a.notice-remove").click(function() {
-			$("#notices").slideUp('fast', function() { $(this).remove(); }); 
+		$('a.notice-remove', '#notices').click(function() {
+			$('#notices').slideUp('fast', function() { 
+				$(this).remove(); 
+				return false;
+			}); 
 		});
 	},
 
@@ -39,7 +42,7 @@ var ProcessWireAdminTheme = {
 	 */
 	setupSidebarNav: function() {
 		
-		var url = window.location.toString()
+		var url = window.location.toString();
 
 		$(document).mouseup(function (e){
 		    var quicklinks = $("ul.quicklinks");
@@ -53,6 +56,7 @@ var ProcessWireAdminTheme = {
 		$(document).keydown(function(e) {
 			var type = e.target.tagName.toLowerCase();
 			var firstClass = e.target.className.split(" ")[0];
+			var state;
 
 			// input, textarea, CKEditor (Inline mode) focused, so do nothing.
 			if (type == 'input' || type == 'textarea' || firstClass == 'InputfieldCKEditorInline') return; 
@@ -254,7 +258,7 @@ var ProcessWireAdminTheme = {
 		// if there are buttons in the format "a button" without ID attributes, copy them into the masthead
 		// or buttons in the format button.head_button_clone with an ID attribute.
 		// var $buttons = $("#content a[id=''] button[id=''], #content button.head_button_clone[id!='']");
-		var $buttons = $("button.head_button_clone, button.head_button, button.head-button");
+		var $buttons = $("button.pw-head-button, button.head_button_clone");
 
 		// don't continue if no buttons here or if we're in IE
 		if($buttons.length == 0 || $.browser.msie) return;
@@ -263,12 +267,13 @@ var ProcessWireAdminTheme = {
 		$buttons.each(function() {
 			var $t = $(this);
 			var $a = $t.parent('a'); 
+			var $button;
 			if($a.length) { 
 				$button = $t.parent('a').clone();
 				//$head.prepend($button);
 				$head.append($button);
 			// } else if($t.is('.head_button_clone')) {
-			} else if($t.hasClass('head_button_clone') || $t.hasClass('head-button')) {
+			} else if($t.hasClass('head_button_clone') || $t.hasClass('pw-head-button')) {
 				$button = $t.clone();
 				$button.attr('data-from_id', $t.attr('id')).attr('id', $t.attr('id') + '_copy');
 				//$a = $("<a></a>").attr('href', '#');
@@ -305,19 +310,25 @@ var ProcessWireAdminTheme = {
 		$.widget( "custom.adminsearchautocomplete", $.ui.autocomplete, {
 			_renderMenu: function(ul, items) {
 				var that = this;
-				var currentType = "";
+				var currentType = "";// add an id to the menu for css styling
+				ul.attr('id', 'ProcessPageSearchAutocomplete');
+				// Loop over each menu item and customize the list item's html.
 				$.each(items, function(index, item) {
+					// Menu categories don't get linked so that they don't receive
+					// keyboard focus.
 					if (item.type != currentType) {
-						ul.append("<li class='ui-widget-header'><a>" + item.type + "</a></li>" );
+						// ul.append("<li class='ui-widget-header'><a>" + item.type + "</a></li>" );
+						$("<li>" + item.type + "</li>").addClass("ui-widget-header").appendTo(ul);
 						currentType = item.type;
 					}
-					ul.attr('id', 'ProcessPageSearchAutocomplete'); 
 					that._renderItemData(ul, item);
 				});
 			},
-			_renderItemData: function(ul, item) {
+			_renderItem: function(ul, item) {
 				if(item.label == item.template) item.template = '';
-				ul.append("<li><a href='" + item.edit_url + "'>" + item.label + " <small>" + item.template + "</small></a></li>"); 
+				return $("<li>")
+					.append("<a href='" + item.edit_url + "'>" + item.label + " <small>" + item.template + "</small></a></li>")
+					.appendTo(ul);
 			}
 		});
 		
@@ -348,7 +359,13 @@ var ProcessWireAdminTheme = {
 					}));
 				});
 			},
-			select: function(event, ui) { }
+			select: function(event, ui) {
+				// follow the link if the Enter/Return key is tapped
+				if(typeof event.key != 'undefined') {
+					event.preventDefault();
+					window.location = ui.item.edit_url;
+				}
+			}
 		}).blur(function() {
 			$status.text('');	
 		});
@@ -360,8 +377,14 @@ var ProcessWireAdminTheme = {
        		if(event.keyCode == 13) {
        			event.preventDefault(); // Don't submit to the search page on Enter Key
        		}
+       		
+       		if(event.keyCode == 40) {
+				// down arrow
+				$input.data('no-close', true);
+			}
 
-       		if(event.keyCode == 38) {
+       		if(event.keyCode == 38 && !$input.data('no-close')) {
+				// up arrow
        			$search.removeClass("open");
 	    		$(this).val(); // close search on arrow up
 	    		$input.blur();
@@ -420,83 +443,20 @@ var ProcessWireAdminTheme = {
 
 	setupDropdowns: function() {
 
-		$('#masthead li.dropdown > a').on('click', function(e){
+		$('#masthead li.pw-dropdown > a').on('click', function(e){
 			$(this).next("ul").toggleClass('open');
 			$(this).parent().siblings().find('ul.open').removeClass('open');
 			return false;
 		});
 
-		$('#masthead li.dropdown > ul li a').on('click', function(e){
+		$('#masthead li.pw-dropdown > ul li a').on('click', function(e){
 			e.stopPropagation();
 		});
 
 		$(document).on('click', function(){
-			$('#masthead li.dropdown ul').removeClass('open');
+			$('#masthead li.pw-dropdown ul').removeClass('open');
 		});
 
-		/*
-		$("ul.dropdown-menu").each(function() {
-			var $ul = $(this).hide();
-			var $a = $ul.siblings(".dropdown-toggle"); 
-
-			if($a.is("button")) {
-				$a.button();
-			} else {
-				$ul.css({ 'border-top-right-radius': 0 }); 
-			}
-
-			// hide nav when an item is selected to avoid the whole nav getting selected
-			$ul.find('a').click(function() {
-				$ul.hide();
-				return true; 
-			});
-
-			$ul.find(".has-items").each(function() {
-				var $icon = $("<i class='has-items-icon fa fa-angle-right ui-priority-secondary'></i>");
-				$(this).prepend($icon);
-			}); 
-
-			var lastOffset = null; 
-
-			$a.mouseenter(function() {
-				var offset = $a.offset();	
-				if(lastOffset != null) {
-					if(offset.top != lastOffset.top || offset.left != lastOffset.left) {
-						// dropdown-toggle has moved, destroy and re-create
-						$ul.menu('destroy').removeClass('dropdown-ready');
-					}
-				}	
-				if(!$ul.hasClass('dropdown-ready')) {
-					$ul.css('position', 'absolute'); 
-					$ul.prependTo($('body')).addClass('dropdown-ready').menu();
-					var position = { my: 'right top', at: 'right bottom', of: $a };
-					var my = $ul.attr('data-my'); 
-					var at = $ul.attr('data-at'); 
-					if(my) position.my = my; 
-					if(at) position.at = at; 
-					$ul.position(position).css('z-index', 200);
-				}
-				$a.addClass('hover'); 
-				$ul.show();
-				lastOffset = offset; 
-
-			}).mouseleave(function() {
-				setTimeout(function() {
-					if($ul.is(":hover")) return;
-					$ul.find('ul').hide();
-					$ul.hide();
-					$a.removeClass('hover');
-				}, 50); 
-			}); 
-
-			$ul.mouseleave(function() {
-				if($a.is(":hover")) return;
-				$ul.hide();
-				$a.removeClass('hover'); 
-			}); 
-
-		});
-		*/
 	}, 
 
 	setupSideBarToggle: function() {
@@ -564,7 +524,7 @@ var ProcessWireAdminTheme = {
 	 */
 	browserCheck: function() {
 		if($.browser.msie && $.browser.version < 8) 
-			$("#content .container").html("<h2>ProcessWire does not support IE7 and below at this time. Please try again with a newer browser.</h2>").show();
+			$("#content .pw-container").html("<h2>ProcessWire does not support IE7 and below at this time. Please try again with a newer browser.</h2>").show();
 	}
 };
 

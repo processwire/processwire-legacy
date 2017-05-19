@@ -93,6 +93,14 @@ $(document).ready(function() {
 
 			// URL where page move's should be posted
 			ajaxMoveURL: ProcessWire.config.urls.admin + 'page/sort/',
+		
+			// classes for pagination
+			paginationClass: 'PageListPagination',
+			paginationCurrentClass: 'PageListPaginationCurrent',
+			paginationLinkClass: 'ui-state-default',
+			paginationLinkCurrentClass: 'ui-state-active',
+			paginationHoverClass: 'ui-state-hover',
+			paginationDisabledClass: 'ui-priority-secondary',
 
 			// pagination number that you want to open (to correspond with openPageIDs)
 			openPagination: 0, 
@@ -128,8 +136,7 @@ $(document).ready(function() {
 		// true when operations are occurring where we want to ignore clicks
 		var ignoreClicks = false;
 		
-		var isModal = $("body").hasClass("modal");
-		var isTouch = $("body").hasClass("touch");
+		var isModal = $("body").hasClass("modal") || $("body").hasClass("pw-iframe");
 	
 		$.extend(options, customOptions);
 
@@ -167,7 +174,12 @@ $(document).ready(function() {
 					*/
 				}
 				
-				if(options.useHoverActions && !$("body").hasClass('touch-device')) {
+				$(document).on('pageListRefresh', function(e, pageID) {
+					// i.e. $(document).trigger('pageListRefresh', pageID); 
+					refreshList(pageID);
+				});
+				
+				if(options.useHoverActions) { 
 					$root.addClass('PageListUseHoverActions');
 					setupHoverActions();
 				}
@@ -203,6 +215,21 @@ $(document).ready(function() {
 						});
 					}
 				}
+
+				$(document).on('keydown', '.PageListItem', function(e) { 
+					// PR#1 makes page-list keyboard accessible
+					e = e || window.event;
+					if(e.keyCode == 0 || e.keyCode == 32) {
+						// spacebar
+						var $actions = $(this).find('.PageListActions');
+						if($actions.is(":visible")) {
+							$actions.css('display', 'none');
+						} else {
+							$actions.css('display', 'inline-block');
+						}
+						return false;
+					}
+				});
 				
 				$(document).on('mouseover', '.PageListItem', function(e) {
 
@@ -341,7 +368,7 @@ $(document).ready(function() {
 
 				if(firstPagination < 0) firstPagination = 0;
 
-				var $list = $("<ul></ul>").addClass("PageListPagination").data('paginationInfo', {
+				var $list = $("<ul></ul>").addClass(options.paginationClass).data('paginationInfo', {
 					start: start,
 					limit: limit,
 					total: total
@@ -354,14 +381,14 @@ $(document).ready(function() {
 				 *
 				 */
 				var paginationClick = function(e) {
-					var $curList = $(this).parents("ul.PageListPagination");
+					var $curList = $(this).parents("ul." + options.paginationClass);
 					var info = $curList.data('paginationInfo'); 
 					if(!info) return false;
 					var start = parseInt($(this).attr('href')) * info.limit;
 					if(start === NaN) start = 0;
 					var $newList = getPaginationList(id, start, info.limit, info.total);
 					var $spinner = $(options.spinnerMarkup);
-					var $loading = $("<li>&nbsp;</li>").append($spinner.hide());
+					var $loading = $("<li>&nbsp;</li>").addClass(options.paginationDisabledClass).append($spinner.hide());
 					$curList.siblings(".PageList").remove(); // remove any open lists below current
 					$curList.replaceWith($newList); 
 					$newList.append($loading); 
@@ -382,22 +409,25 @@ $(document).ready(function() {
 	
 				for(var pagination = firstPagination, cnt = 0; pagination < numPaginations; pagination++, cnt++) {
 
-					var $a = $("<a></a>").html(pagination+1).attr('href', pagination).addClass('ui-state-default'); 
-					var $item = $("<li></li>").addClass('PageListPagination' + cnt).append($a); // .addClass('ui-state-default');
+					var $a = $("<a></a>").html(pagination+1).attr('href', pagination).addClass(options.paginationLinkClass); 
+					var $item = $("<li></li>").addClass(options.paginationClass + cnt).append($a); // .addClass('ui-state-default');
 
 					if(pagination == curPagination) {
 						//$item.addClass("PageListPaginationCurrent ui-state-focus"); 
-						$item.addClass("PageListPaginationCurrent").find("a").removeClass('ui-state-default').addClass("ui-state-active"); 
+						$item.addClass(options.paginationCurrentClass).find("a")
+							.removeClass(options.paginationLinkClass)
+							.addClass(options.paginationLinkCurrentClass); 
 					}
 
 					$list.append($item); 
 
 					if(!$blankItem) {
-						$blankItem = $item.clone().removeClass('PageListPaginationCurrent ui-state-active'); 
-						$blankItem.find('a').removeClass('ui-state-active').addClass('ui-state-default');  
+						$blankItem = $item.clone().removeClass(options.paginationCurrentClass + ' ' + options.paginationLinkCurrentClass); 
+						$blankItem.find('a').removeClass(options.paginationLinkCurrentClass).addClass(options.paginationLinkClass);  
 					}
 					// if(!$blankItem) $blankItem = $item.clone().removeClass('PageListPaginationCurrent').find('a').removeClass('ui-state-focus').addClass('ui-state-default'); 
-					if(!$separator) $separator = $blankItem.clone().removeClass('ui-state-default').html("&hellip;"); 
+					if(!$separator) $separator = $blankItem.clone().removeClass(options.paginationLinkClass)
+						.addClass(options.paginationDisabledClass).html("&hellip;"); 
 					//if(!$separator) $separator = $blankItem.clone().html("&hellip;"); 
 
 					if(cnt >= maxPaginationLinks && pagination < numPaginations) {
@@ -430,9 +460,9 @@ $(document).ready(function() {
 
 				$list.find("a").click(paginationClick)
 					.hover(function() { 
-						$(this).addClass('ui-state-hover'); 
+						$(this).addClass(options.paginationHoverClass); 
 					}, function() { 
-						$(this).removeClass("ui-state-hover"); 
+						$(this).removeClass(options.paginationHoverClass); 
 					}); 
 
 				return $list;
@@ -445,8 +475,8 @@ $(document).ready(function() {
 			 * @param jQuery $target Item to attach children to
 		 	 * @param int start If not starting from first item, num of item to start with
 			 * @param bool beginList Set to true if this is the first call to create the list
-			 * @param bool replace Should any existing list be replaced (true) or appended (false)
 			 * @param bool pagination Set to false if you don't want pagination, otherwise leave it out
+			 * @param bool replace Should any existing list be replaced (true) or appended (false)
 			 *
 			 */
 			function loadChildren(id, $target, start, beginList, pagination, replace, callback) {
@@ -457,7 +487,7 @@ $(document).ready(function() {
 				var processChildren = function(data) {
 
 					if(data && data.error) {
-						alert(data.message); 
+						ProcessWire.alert(data.message); 
 						$loading.hide();
 						ignoreClicks = false;
 						return; 
@@ -653,7 +683,7 @@ $(document).ready(function() {
 						else actionName = action.cn; // cn = className
 
 					var $a = $("<a></a>").html(action.name).attr('href', action.url);
-					if(!isModal && !isTouch) {
+					if(!isModal) {
 						if(action.cn == 'Edit') {
 							$a.addClass('pw-modal pw-modal-large pw-modal-longclick');
 							$a.attr('data-buttons', '#ProcessPageEdit > .Inputfields > .InputfieldSubmit .ui-button');
@@ -825,7 +855,7 @@ $(document).ready(function() {
 								} else {
 									// data.success === false, so display error
 									$spinner.remove();
-									alert(data.message);
+									ProcessWire.alert(data.message);
 								}
 							});
 							return false;
@@ -949,6 +979,40 @@ $(document).ready(function() {
 				});
 				// console.log(currentOpenPageIDs);
 				$.cookie('pagelist_open', currentOpenPageIDs);
+			}
+
+			/**
+			 * Force refresh the list that pageID appears in
+			 * 
+			 * @param pageID
+			 * @param animate
+			 * 
+			 */
+			function refreshList(pageID, animate) {
+				
+				var $parentList = $('.PageListID' + pageID).parent('.PageList');
+				var $parentItem = $parentList.prev('.PageListItem');
+				if(!$parentItem.length) return;
+				
+				var parentID = $parentItem.attr('class').match(/PageListID(\d+)/)[1];
+				var start = 0;
+				var $pagination = $parentList.children("ul." + options.paginationClass);
+				var paginationInfo = $pagination.data('paginationInfo');
+				var $removeItems = null;
+				
+				if(paginationInfo) {
+					var $a = $pagination.find('.pw-link-active');
+					if($a.length) start = parseInt($a.attr('href')) * paginationInfo.limit;
+					if(start === NaN) start = 0;
+				}
+				if(parentID == 1) {
+					$removeItems = $parentList.children();
+					$parentList = $parentItem;
+				}
+				$parentList.addClass('PageListForceReload');
+				loadChildren(parentID, $parentList, start, false, true, true, function() {
+					if($removeItems && $removeItems.length) $removeItems.remove();
+				});
 			}
 			
 			/**
@@ -1146,7 +1210,7 @@ $(document).ready(function() {
 					}); 
 
 					if(data && data.error) {
-						alert(data.message); 
+						ProcessWire.alert(data.message); 
 					}
 
 					// if item moved from one list to another, then update the numChildren counts

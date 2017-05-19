@@ -34,7 +34,7 @@ class InputfieldDatetime extends Inputfield {
 		return array(
 			'title' => __('Datetime', __FILE__), // Module Title
 			'summary' => __('Inputfield that accepts date and optionally time', __FILE__), // Module Summary
-			'version' => 105,
+			'version' => 106,
 			'permanent' => true, 
 			);
 	}
@@ -173,7 +173,7 @@ class InputfieldDatetime extends Inputfield {
 		if(empty($value)) $value = '';
 		$yearRange = $sanitizer->entities($this->yearRange);
 
-		$out = 	"\n" .
+		$out = 	
 			"<input " . $this->getAttributesString($attrs) . " " .
 			"value='$value' " .
 			"data-dateformat='$dateFormatJS' " .
@@ -291,7 +291,7 @@ class InputfieldDatetime extends Inputfield {
 		$f->label = $this->_('Date Input Format');
 		$f->description = $this->_('Select the format to be used for user input to this field. Your selection will populate the field below this, which you may customize further if needed.');
 		$f->icon = 'calendar';
-		$f->addOption('', $this->_('None'));
+		//$f->addOption('', $this->_('None'));
 		$date = strtotime('2016-04-08 5:10:02 PM');
 		foreach($datetime->getDateFormats() as $format) {
 			$dateFormatted = $datetime->formatDate($date, $format);
@@ -400,7 +400,7 @@ class InputfieldDatetime extends Inputfield {
 		$f->columnWidth = 50;
 		$inputfields->append($f);
 		
-		/** @var InputfieldText $f */
+		/** @var InputfieldText $field */
 		$field = $this->modules->get('InputfieldText');
 		$field->setAttribute('name', 'placeholder');
 		$field->label = $this->_('Placeholder Text');

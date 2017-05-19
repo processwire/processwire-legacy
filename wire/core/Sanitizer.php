@@ -68,7 +68,7 @@ class Sanitizer extends Wire {
 	 *
 	 */
 	public function __construct() {
-		$this->multibyteSupport = function_exists("mb_strlen"); 
+		$this->multibyteSupport = function_exists("mb_internal_encoding"); 
 		if($this->multibyteSupport) mb_internal_encoding("UTF-8");
 		$this->allowedASCII = str_split('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
 	}
@@ -914,15 +914,16 @@ class Sanitizer extends Wire {
 	 * #pw-group-strings
 	 *
 	 * @param string $value String value to sanitize
-	 * @param array $options Options to modify default behavior: 
-	 *  - `maxLength` (int): maximum characters allowed, or 0=no max (default=255).
-	 *  - `maxBytes` (int): maximum bytes allowed (default=0, which implies maxLength*4).
-	 *  - `stripTags` (bool): strip markup tags? (default=true).
-	 *  - `allowableTags` (string): markup tags that are allowed, if stripTags is true (use same format as for PHP's `strip_tags()` function.
-	 *  - `multiLine` (bool): allow multiple lines? if false, then $newlineReplacement below is applicable (default=false).
-	 *  - `newlineReplacement` (string): character to replace newlines with, OR specify boolean TRUE to remove extra lines (default=" ").
-	 *  - `inCharset` (string): input character set (default="UTF-8").
-	 *  - `outCharset` (string): output character set (default="UTF-8").
+	 * @param array $options Options to modify default behavior:
+	 * - `maxLength` (int): maximum characters allowed, or 0=no max (default=255).
+	 * - `maxBytes` (int): maximum bytes allowed (default=0, which implies maxLength*4).
+	 * - `stripTags` (bool): strip markup tags? (default=true).
+	 * - `stripMB4` (bool): strip emoji and other 4-byte UTF-8? (default=false). 
+	 * - `allowableTags` (string): markup tags that are allowed, if stripTags is true (use same format as for PHP's `strip_tags()` function.
+	 * - `multiLine` (bool): allow multiple lines? if false, then $newlineReplacement below is applicable (default=false).
+	 * - `newlineReplacement` (string): character to replace newlines with, OR specify boolean TRUE to remove extra lines (default=" ").
+	 * - `inCharset` (string): input character set (default="UTF-8").
+	 * - `outCharset` (string): output character set (default="UTF-8").
 	 * @return string
 	 * @see Sanitizer::textarea()
 	 *
@@ -933,6 +934,7 @@ class Sanitizer extends Wire {
 			'maxLength' => 255, // maximum characters allowed, or 0=no max
 			'maxBytes' => 0,  // maximum bytes allowed (0 = default, which is maxLength*4)
 			'stripTags' => true, // strip markup tags
+			'stripMB4' => false, // strip Emoji and 4-byte characters? 
 			'allowableTags' => '', // tags that are allowed, if stripTags is true (use same format as for PHP's strip_tags function)
 			'multiLine' => false, // allow multiple lines? if false, then $newlineReplacement below is applicable
 			'newlineReplacement' => ' ', // character to replace newlines with, OR specify boolean TRUE to remove extra lines
@@ -962,7 +964,9 @@ class Sanitizer extends Wire {
 
 		if($options['stripTags']) $value = strip_tags($value, $options['allowableTags']); 
 
-		if($options['inCharset'] != $options['outCharset']) $value = iconv($options['inCharset'], $options['outCharset'], $value); 
+		if($options['inCharset'] != $options['outCharset']) $value = iconv($options['inCharset'], $options['outCharset'], $value);
+		
+		if($options['stripMB4']) $value = $this->removeMB4($value);
 
 		if($options['maxLength']) {
 			if(empty($options['maxBytes'])) $options['maxBytes'] = $options['maxLength'] * 4;
@@ -1007,9 +1011,10 @@ class Sanitizer extends Wire {
 	 *
 	 * @param string $value String value to sanitize
 	 * @param array $options Options to modify default behavior
-	 * 	- `maxLength` (int): maximum characters allowed, or 0=no max (default=16384 or 16kb).
+	 *  - `maxLength` (int): maximum characters allowed, or 0=no max (default=16384 or 16kb).
 	 *  - `maxBytes` (int): maximum bytes allowed (default=0, which implies maxLength*3 or 48kb).
 	 *  - `stripTags` (bool): strip markup tags? (default=true).
+	 *  - `stripMB4` (bool): strip emoji and other 4-byte UTF-8? (default=false). 
 	 *  - `allowableTags` (string): markup tags that are allowed, if stripTags is true (use same format as for PHP's `strip_tags()` function.
 	 *  - `allowCRLF` (bool): allow CR+LF newlines (i.e. "\r\n")? (default=false, which means "\r\n" is replaced with "\n"). 
 	 *  - `inCharset` (string): input character set (default="UTF-8").
@@ -1070,9 +1075,10 @@ class Sanitizer extends Wire {
 		if(strpos($value, '<') !== false) {
 			// tag replacements before strip_tags()
 			$regex =
-				'!(?:<' .
-				'/?(?:ul|ol|p|h\d|div)(?:>|\s[^><]*)' .
-				'|br[\s/]*' .
+				'!<(?:' .
+					'/?(?:ul|ol|p|h\d|div)(?:>|\s[^><]*)' .
+					'|' . 
+					'(?:br[\s/]*)' .
 				')>!is';
 			$value = preg_replace($regex, $newline, $value);
 			if(stripos($value, '</li>')) {
@@ -1510,14 +1516,15 @@ class Sanitizer extends Wire {
 			// value needs more filtering, replace all non-alphanumeric, non-single-quote and space chars
 			// See: http://php.net/manual/en/regexp.reference.unicode.php
 			// See: http://www.regular-expressions.info/unicode.html
-			$value = preg_replace('/[^[:alnum:]\pL\pN\pP\pM\p{Sm}\p{Sc}\p{Sk} \'\/]/u', ' ', $value); 
+			$value = preg_replace('/[^[:alnum:]\pL\pN\pP\pM\p{S} \'\/]/u', ' ', $value); 
 
 			// replace multiple space characters in sequence with just 1
 			$value = preg_replace('/\s\s+/u', ' ', $value); 
 		}
 
 		$value = trim($value); // trim any kind of whitespace
-		$value = trim($value, '+!,'); // chars to remove from begin and end 
+		$value = trim($value, '+,'); // chars to remove from begin and end 
+		if(strpos($value, '!') !== false) $needsQuotes = true; 
 		
 		if(!$needsQuotes && $options['useQuotes'] && strlen($value)) {
 			$a = substr($value, 0, 1); 
@@ -1588,14 +1595,13 @@ class Sanitizer extends Wire {
 	 * for text coming from user input since it doesn't allow any other HTML. But if you just
 	 * want full markdown, then specify TRUE for the `$options` argument. 
 	 * 
-	 * ~~~~~
 	 * Basic allowed markdown currently includes: 
-	 * **strong**
-	 * *emphasis*
-	 * [anchor-text](url)
-	 * ~~strikethrough~~
-	 * `code`
-	 * ~~~~~
+	 * - `**strong**`
+	 * - `*emphasis*`
+	 * - `[anchor-text](url)`
+	 * - `~~strikethrough~~`
+	 * - code surrounded by backticks
+	 * 
 	 * ~~~~~
 	 * // basic markdown
 	 * echo $sanitizer->entitiesMarkdown($str); 
@@ -1721,6 +1727,7 @@ class Sanitizer extends Wire {
 	 * @param int|bool $flags See PHP html_entity_decode function for flags. 
 	 * @param string $encoding Encoding (default="UTF-8").
 	 * @return string String with entities removed.
+	 * @see Sanitizer::entities()
 	 *
 	 */
 	public function unentities($str, $flags = ENT_QUOTES, $encoding = 'UTF-8') {
@@ -1800,6 +1807,43 @@ class Sanitizer extends Wire {
 	}
 
 	/**
+	 * Removes 4-byte UTF-8 characters (like emoji) that produce error with with MySQL regular “UTF8” encoding
+	 * 
+	 * Returns the same value type that it is given. If given something other than a string or array, it just
+	 * returns it without modification. 
+	 * 
+	 * #pw-group-strings
+	 * 
+	 * @param string|array $value String or array containing strings
+	 * @return string|array|mixed 
+	 * 
+	 */
+	function removeMB4($value) {
+		if(empty($value)) return $value;
+		if(is_array($value)) {
+			// process array recursively, looking for strings to convert
+			foreach($value as $key => $val) {
+				if(empty($val)) continue;
+				if(is_string($val) || is_array($val)) $value[$key] = $this->removeMB4($val);
+			}
+		} else if(is_string($value)) {
+			if(strlen($value) > 3 && max(array_map('ord', str_split($value))) >= 240) {
+				// string contains 4-byte characters
+				$regex =
+					'!(?:' .
+					'\xF0[\x90-\xBF][\x80-\xBF]{2}' .
+					'|[\xF1-\xF3][\x80-\xBF]{3}' .
+					'|\xF4[\x80-\x8F][\x80-\xBF]{2}' .
+					')!s';
+				$value = preg_replace($regex, '', $value);
+			}
+		} else {
+			// not a string or an array, leave as-is
+		}
+		return $value;
+	}
+
+	/**
 	 * Sanitize value to string
 	 *
 	 * Note that this makes no assumptions about what is a "safe" string, so you should always apply another
@@ -1823,9 +1867,11 @@ class Sanitizer extends Wire {
 			$value = "";
 		} else if(is_bool($value)) {
 			$value = $value ? "1" : "";
+		} else if(is_array($value)) {
+			$value = "array-" . count($value);
+		} else if(!is_string($value)) {
+			$value = (string) $value;
 		}
-		if(is_array($value)) $value = "array-" . count($value);
-		if(!is_string($value)) $value = (string) $value;
 		if(!is_null($sanitizer) && is_string($sanitizer) && (method_exists($this, $sanitizer) || method_exists($this, "___$sanitizer"))) {
 			$value = $this->$sanitizer($value);
 			if(!is_string($value)) $value = (string) $value;
@@ -1837,8 +1883,9 @@ class Sanitizer extends Wire {
 	 * Sanitize a date or date/time string, making sure it is valid, and return it
 	 *
 	 * - If no date $format is specified, date will be returned as a unix timestamp.
-	 * - If given date is invalid or empty, NULL will be returned.
+	 * - If given date in invalid format and can’t be made valid, or date is empty, NULL will be returned.
 	 * - If $value is an integer or string of all numbers, it is always assumed to be a unix timestamp.
+	 * - If $format and “strict” option specified, date will also validate for format and no out-of-bounds values will be converted.
 	 * 
 	 * #pw-group-strings
 	 * #pw-group-numbers
@@ -1850,6 +1897,7 @@ class Sanitizer extends Wire {
 	 *  - `min` (string|int): Minimum allowed date in $format or unix timestamp format. Null is returned when date is less than this.
 	 *  - `max` (string|int): Maximum allowed date in $format or unix timestamp format. Null is returned when date is more than this.
 	 *  - `default` (mixed): Default value to return if no value specified.
+	 *  - `strict` (bool): Force dates that don’t match given $format, or out of bounds, to fail. Requires $format. (default=false)
 	 * @return string|int|null
 	 *
 	 */
@@ -1859,8 +1907,11 @@ class Sanitizer extends Wire {
 			'min' => '', // Minimum date allowed (in $dateFormat format, or a unix timestamp) 
 			'max' => '', // Maximum date allowed (in $dateFormat format, or a unix timestamp)
 			'default' => null, // Default value, if date didn't resolve
+			'strict' => false,
 		);
 		$options = array_merge($defaults, $options);
+		$datetime = $this->wire('datetime');
+		$_value = trim($value); // original value string
 		if(empty($value)) return $options['default'];
 		if(!is_string($value) && !is_int($value)) $value = $this->string($value);
 		if(ctype_digit("$value")) {
@@ -1868,10 +1919,16 @@ class Sanitizer extends Wire {
 			// make sure it resolves to a valid date
 			$value = strtotime(date('Y-m-d H:i:s', (int) $value));
 		} else {
-			$value = strtotime($value);
+			/** @var WireDateTime $datetime */
+			$value = $datetime->stringToTimestamp($value, $format); 
 		}
 		// value is now a unix timestamp
 		if(empty($value)) return null;
+		// if format is provided and in strict mode, validate for the format and bounds
+		if($format && $options['strict']) {
+			$test = $datetime->date($format, $value);
+			if($test !== $_value) return null;
+		}
 		if(!empty($options['min'])) {
 			// if value is less than minimum required, return null/error
 			$min = ctype_digit("$options[min]") ? (int) $options['min'] : (int) wireDate('ts', $options['min']);
@@ -2178,10 +2235,11 @@ class Sanitizer extends Wire {
 	 * #pw-group-arrays
 	 *
 	 * @param array $data Array to reduce
-	 * @param bool|array $allowEmpty Should empty values be allowed in the encoded data?
+	 * @param bool|array $allowEmpty Should empty values be allowed in the encoded data? Specify any of the following:
 	 *  - `false` (bool): to exclude all empty values (this is the default if not specified).
 	 *  - `true` (bool): to allow all empty values to be retained (thus no point in calling this function).
 	 *  - Specify array of keys (from data) that should be retained if you want some retained and not others.
+	 *  - Specify array of literal empty value types to retain, i.e. [ 0, '0', array(), false, null ]
 	 *  - Specify the digit `0` to retain values that are 0, but not other types of empty values.
 	 * @param bool $convert Perform type conversions where appropriate? i.e. convert digit-only string to integer (default=false). 
 	 * @return array
@@ -2191,6 +2249,14 @@ class Sanitizer extends Wire {
 		
 		if(!is_array($data)) {
 			$data = $this->___array($data, null);
+		}
+	
+		$allowEmptyTypes = array();
+		if(is_array($allowEmpty)) {
+			foreach($allowEmpty as $emptyType) {
+				if(!empty($emptyType)) continue;
+				$allowEmptyTypes[] = $emptyType;
+			}
 		}
 
 		foreach($data as $key => $value) {
@@ -2208,20 +2274,32 @@ class Sanitizer extends Wire {
 
 			$data[$key] = $value;
 
-			// skip empty values whether blank, 0, empty array, etc. 
-			if(empty($value)) {
-
-				if($allowEmpty === 0 && $value === 0) {
-					// keep it because $allowEmpty === 0 means to keep 0 values only
-
-				} else if(is_array($allowEmpty) && !in_array($key, $allowEmpty)) {
-					// remove it because it's not specifically allowed in allowEmpty
-					unset($data[$key]);
-
-				} else if(!$allowEmpty) {
-					// remove the empty value
-					unset($data[$key]);
+			// if value is not empty, no need to continue further checks
+			if(!empty($value)) continue;
+			
+			$typeMatched = false;
+			if(count($allowEmptyTypes)) {
+				foreach($allowEmptyTypes as $emptyType) {
+					if($value === $emptyType) {
+						$typeMatched = true;
+						break;
+					}
 				}
+			}
+			
+			if($typeMatched) {
+				// keep it because type matched an allowEmptyTypes
+
+			} else if($allowEmpty === 0 && $value === 0) {
+				// keep it because $allowEmpty === 0 means to keep 0 values only
+				
+			} else if(is_array($allowEmpty) && !in_array($key, $allowEmpty)) {
+				// remove it because it's not specifically allowed in allowEmpty
+				unset($data[$key]);
+
+			} else if(!$allowEmpty) {
+				// remove the empty value
+				unset($data[$key]);
 			}
 		}
 
@@ -2314,42 +2392,50 @@ class Sanitizer extends Wire {
 	 */
 	public function testAll($value) {
 		$sanitizers = array(
+			'alpha', 
+			'alphanumeric',
+			'array',
+			'bool',
+			'date',
+			'digits', 
+			'email',
+			'emailHeader',
+			'entities',
+			'entities1',
+			'entitiesMarkdown',
+			'fieldName',
+			'filename',
+			'float',
+			'int',
+			'intArray',
+			'intSigned',
+			'intUnsigned',
+			'markupToLine',
+			'markupToText',
+			'minArray',
 			'name',
 			'names',
-			'varName',
-			'fieldName',
-			'templateName',
 			'pageName',
 			'pageNameTranslate',
 			'pageNameUTF8',
-			'filename',
-			'path', 
 			'pagePathName',
-			'email',
-			'emailHeader',
-			'text',
-			'textarea',
-			'url',
+			'pagePathNameUTF8',
+			'path',
+			'purify',
+			'removeNewlines',
 			'selectorField',
 			'selectorValue',
-			'entities',
-			'entities1',
-			'unentities',
-			'entitiesMarkdown',
-			'purify',
 			'string',
-			'date',
-			'int',
-			'intUnsigned',
-			'intSigned',
-			'float',
-			'array',
-			'intArray',
-			'bool',
+			'templateName',
+			'text',
+			'textarea',
+			'unentities',
+			'url',
+			'varName',
 		);
 		$results = array();
 		foreach($sanitizers as $method) {
-			$results[$method] = $this->$method($value);	
+			$results[$method] = $this->$method($value);
 		}
 		return $results;
 	}

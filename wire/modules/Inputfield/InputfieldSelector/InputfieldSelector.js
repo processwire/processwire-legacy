@@ -49,7 +49,7 @@ var InputfieldSelector = {
 			var $t = $(this); 
 			clearTimeout(timeout); 
 			if($t.hasClass("input-value-subselect") && InputfieldSelector.valueHasOperator($t.val())) {
-				var $preview = $t.parents('.selector-list').siblings('.selector-preview'); 
+				var $preview = $t.closest('.InputfieldContent').find('.selector-preview'); 
 				$preview.html('Subselect detected: when done <a href="#" onclick="return false">click here to commit your change</a>.'); 
 				return;
 			}
@@ -71,9 +71,11 @@ var InputfieldSelector = {
 			InputfieldSelector.normalizeHeightRows($inputfield); 
 		}); 
 
+		/*
 		$(".InputfieldSelector .InputfieldContent").eq(0).each(function() {
 			InputfieldSelector.borderColor = $(this).css('border-bottom-color'); 
 		}); 
+		*/
 
 		// trigger change any event for first item, in case we have one already populated
 		//var $rows = $(".InputfieldSelector .selector-row:not(.selector-template-row)"); 
@@ -480,7 +482,8 @@ var InputfieldSelector = {
 			var $orCheckbox = $row.find(".input-or"); 
 			var useOrValue = mayOrValue && $orCheckbox.is(":checked"); 
 			var useOrField = mayOrField && $orCheckbox.is(":checked"); 
-
+			var isOrGroup = (useOrField || useOrValue) && fieldName == '_custom';
+			
 			if(useOrValue) { //  && !$row.is('.has-or-value')) {
 				$row.addClass('has-or-value'); 
 				$row.find(".select-field, .select-operator, .select-subfield").attr('disabled', 'disabled'); 
@@ -505,6 +508,7 @@ var InputfieldSelector = {
 				mayOrField: mayOrField,
 				useOrValue: useOrValue, 
 				useOrField: useOrField,
+				isOrGroup: isOrGroup,
 				checkbox: $orCheckbox
 				};
 
@@ -560,13 +564,15 @@ var InputfieldSelector = {
 				if(i === n) continue; 
 				var si = selectors[i]; 
 				if(si === null || typeof si == "undefined" || typeof si.value == "undefined") continue; 
-				if(si.mayOrField && si.value == s.value) {
+				if(si.field == '_custom' && si.isOrGroup) {
+					s.isOrGroup = true;
+				} else if(si.mayOrField && si.value == s.value && si.operator == s.operator) {
 					si.checkbox.show();
 					if(si.useOrField) {
 						s.field += '|' + si.field; 
 						selectors[i] = null;
 					}
-				} else if(si.mayOrValue && si.field == s.field) {
+				} else if(si.mayOrValue && si.field == s.field && si.operator == s.operator) {
 					si.checkbox.show();
 					if(si.useOrValue) { 
 						s.value += '|' + si.value; 
@@ -582,13 +588,19 @@ var InputfieldSelector = {
 			}
 
 			if(s.field == '_custom') {
-				selector += s.value; 
+				if(s.isOrGroup) {
+					s.value = s.value.replace('(', '').replace(')', '');
+					selector += s.field + '=' + '(' + $.trim(s.value) + ')';
+				} else {
+					//selector += s.value;
+					selector += s.field + '="' + $.trim(s.value) + '"';
+				}
 			} else {
 				selector += s.field + s.operator + $.trim(s.value); 
 			}
 		}
 
-		var $preview = $item.parents('.selector-list').siblings('.selector-preview'); 
+		var $preview = $item.closest('.InputfieldContent').find('.selector-preview'); 
 		var initValue = $preview.attr('data-init-value'); 
 		if(initValue && initValue.length) initValue += ', ';
 

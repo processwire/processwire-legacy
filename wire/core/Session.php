@@ -28,7 +28,7 @@
  * @method void loginFailure($name, $reason) #pw-hooker
  * @method void logoutSuccess(User $user) #pw-hooker
  * 
- * @property SessionCSRF $CSRF
+ * @property SessionCSRF $CSRF 
  *
  * Expected $config variables include: 
  * ===================================
@@ -249,6 +249,10 @@ class Session extends Wire implements \IteratorAggregate {
 		ini_set('session.use_only_cookies', 1);
 		ini_set('session.cookie_httponly', 1);
 		ini_set('session.gc_maxlifetime', $this->config->sessionExpireSeconds);
+		
+		if($this->config->sessionCookieDomain) {
+			ini_set('session.cookie_domain', $this->config->sessionCookieDomain);
+		}
 
 		if(ini_get('session.save_handler') == 'files') {
 			if(ini_get('session.gc_probability') == 0) {
@@ -339,27 +343,67 @@ class Session extends Wire implements \IteratorAggregate {
 
 	/**
 	 * Generate a session fingerprint
+	 *
+	 * If the `$mode` argument is omitted, the mode is pulled from `$config->sessionFingerprint`. If using the
+	 * mode argument, specify one of the following: 
 	 * 
+	 *  - 0 or false: Fingerprint nothing.
+	 *  - 1 or true: Fingerprint on with default/recommended setting (currently 10).
+	 *  - 2: Fingerprint only the remote IP.
+	 *  - 4: Fingerprint only the forwarded/client IP (can be spoofed).
+	 *  - 8: Fingerprint only the useragent.
+	 *  - 10: Fingerprint the remote IP and useragent (default).
+	 *  - 12: Fingerprint the forwarded/client IP and useragent.
+	 *  - 14: Fingerprint the remote IP, forwarded/client IP and useragent (all).
+	 * 
+	 * If using fingerprint in an environment where the user’s IP address may change during the session, you should
+	 * fingerprint only the useragent, or disable fingerprinting.
+	 * 
+	 * If using fingerprint with an AWS load balancer, you should use one of the options that uses the “client IP” 
+	 * rather than the “remote IP”, fingerprint only the useragent, or disable fingerprinting. 
+	 * 
+	 * #pw-internal
+	 * 
+	 * @param int|bool|null $mode Optionally specify fingerprint mode (default=$config->sessionFingerprint)
+	 * @param bool $debug Return non-hashed fingerprint for debugging purposes? (default=false)
 	 * @return bool|string Returns false if fingerprints not enabled. Returns string if enabled.
 	 * 
 	 */
-	protected function getFingerprint() {
+	public function getFingerprint($mode = null, $debug = false) {
+	
+		$debugInfo = array();
+		$useFingerprint = $mode === null ? $this->config->sessionFingerprint : $mode;
 		
-		$useFingerprint = $this->config->sessionFingerprint;
 		if(!$useFingerprint) return false;
 
 		if(is_bool($useFingerprint) || $useFingerprint == 1) {
 			// default (boolean true)
 			$useFingerprint = self::fingerprintRemoteAddr | self::fingerprintUseragent;
+			if($debug) $debugInfo[] = 'default';
 		}
 
 		$fingerprint = '';
-		if($useFingerprint & self::fingerprintRemoteAddr) $fingerprint .= $this->getIP(true);
-		if($useFingerprint & self::fingerprintClientAddr) $fingerprint .= $this->getIP(false, 2);
+		
+		if($useFingerprint & self::fingerprintRemoteAddr) {
+			$fingerprint .= $this->getIP(true);
+			if($debug) $debugInfo[] = 'remote-addr';
+		}
+		
+		if($useFingerprint & self::fingerprintClientAddr) {
+			$fingerprint .= $this->getIP(false, 2);
+			if($debug) $debugInfo[] = 'client-addr';
+		}
+		
 		if($useFingerprint & self::fingerprintUseragent) {
 			$fingerprint .= isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
+			if($debug) $debugInfo[] = 'useragent';
 		}
-		$fingerprint = md5($fingerprint);
+		
+		if($debug) {
+			$fingerprint = implode(',', $debugInfo) . ': ' . $fingerprint;
+		} else {
+			$fingerprint = md5($fingerprint);
+		}
 		
 		return $fingerprint;
 	}
@@ -395,9 +439,7 @@ class Session extends Wire implements \IteratorAggregate {
 	 */
 	public function get($key, $_key = null) {
 		if($key == 'CSRF') {
-			if(!$this->sessionInit) $this->init(); // init required for CSRF
-			if(is_null($this->CSRF)) $this->CSRF = $this->wire(new SessionCSRF());
-			return $this->CSRF; 
+			return $this->CSRF();
 		} else if(!is_null($_key)) {
 			// namespace
 			return $this->getFor($key, $_key);
@@ -651,7 +693,11 @@ class Session extends Wire implements \IteratorAggregate {
 	 */
 	public function getIP($int = false, $useClient = false) {
 
-		if($useClient) { 
+		if(empty($_SERVER['REMOTE_ADDR'])) {
+			// when accessing via CLI Interface, $_SERVER['REMOTE_ADDR'] isn't set and trying to get it, throws a php-notice
+			$ip = '127.0.0.1';
+			
+		} else if($useClient) { 
 			if(!empty($_SERVER['HTTP_CLIENT_IP'])) $ip = $_SERVER['HTTP_CLIENT_IP']; 
 				else if(!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
 				else if(!empty($_SERVER['REMOTE_ADDR'])) $ip = $_SERVER['REMOTE_ADDR']; 
@@ -734,7 +780,7 @@ class Session extends Wire implements \IteratorAggregate {
 				$this->set('_user', 'challenge', $challenge); 
 				$secure = $this->config->sessionCookieSecure ? (bool) $this->config->https : false;
 				// set challenge cookie to last 30 days (should be longer than any session would feasibly last)
-				setcookie(session_name() . '_challenge', $challenge, time()+60*60*24*30, '/', null, $secure, true); // PR #1264
+				setcookie(session_name() . '_challenge', $challenge, time()+60*60*24*30, '/', $this->config->sessionCookieDomain, $secure, true); // PR #1264
 			}
 
 			if($this->config->sessionFingerprint) { 
@@ -888,10 +934,10 @@ class Session extends Wire implements \IteratorAggregate {
 		$time = time() - 42000;
 		$secure = $this->config->sessionCookieSecure ? (bool) $this->config->https : false;
 		if(isset($_COOKIE[$sessionName])) {
-			setcookie($sessionName, '', $time, '/', null, $secure, true);
+			setcookie($sessionName, '', $time, '/', $this->config->sessionCookieDomain, $secure, true);
 		}
 		if(isset($_COOKIE[$sessionName . "_challenge"])) {
-			setcookie($sessionName . "_challenge", '', $time, '/', null, $secure, true);
+			setcookie($sessionName . "_challenge", '', $time, '/', $this->config->sessionCookieDomain, $secure, true);
 		}
 	}
 
@@ -950,6 +996,7 @@ class Session extends Wire implements \IteratorAggregate {
 				if(!strpos($url, 'modal=')) $url .= (strpos($url, '?') !== false ? '&' : '?') . 'modal=1'; 
 			}
 		}
+		$this->wire()->setStatus(ProcessWire::statusFinished);
 		if($http301) header("HTTP/1.1 301 Moved Permanently");
 		header("Location: $url");
 		exit(0);
@@ -1126,6 +1173,34 @@ class Session extends Wire implements \IteratorAggregate {
 		foreach(array('message', 'error', 'warning') as $type) {
 			$this->remove($type);
 		}
+	}
+
+	/**
+	 * Return an instance of ProcessWire’s CSRF object, which provides an API for cross site request forgery protection.
+	 * 
+	 * ~~~~
+	 * // output somewhere in <form> markup when rendering a form
+	 * echo $session->CSRF->renderInput();
+	 * ~~~~
+	 * ~~~~ 
+	 * // when processing form (POST request), check to see if token is present
+	 * if($session->CSRF->hasValidToken()) {
+	 *   // form submission is valid
+	 *   // okay to process
+	 * } else {
+	 *   // form submission is NOT valid
+	 *   throw new WireException('CSRF check failed!');
+	 * }
+	 * ~~~~
+	 * 
+	 * @return SessionCSRF
+	 * @see SessionCSRF::renderInput(), SessionCSRF::validate(), SessionCSRF::hasValidToken()
+	 * 
+	 */
+	public function CSRF() {
+		if(!$this->sessionInit) $this->init(); // init required for CSRF
+		if(is_null($this->CSRF)) $this->CSRF = $this->wire(new SessionCSRF());
+		return $this->CSRF; 
 	}
 
 }

@@ -12,10 +12,15 @@
  * 
  */
 
+/** @var Config $config */
+/** @var AdminThemeReno $adminTheme */
+/** @var User $user */
+/** @var Modules $modules */
+
 if(!defined("PROCESSWIRE")) die();
 
 if(!isset($content)) $content = '';
-$version = $adminTheme->version . 'j';
+$version = $adminTheme->version . 'l';
 $ext = $config->debug ? "js" : "min.js";
 
 // Search form
@@ -29,6 +34,7 @@ $colorFile = file_exists($config->paths->adminTemplates . $defaultColors) ? $con
 
 // Styles
 $config->styles->prepend($colorFile . "?v=" . $version);
+$config->styles->prepend($config->urls->root . "wire/templates-admin/styles/AdminTheme.css?v=$version");
 $config->styles->append($config->urls->root . "wire/templates-admin/styles/font-awesome/css/font-awesome.min.css?v=$version");
 
 // Scripts
@@ -42,7 +48,7 @@ $extras = $adminTheme->getExtraMarkup();
 
 ?>
 <!DOCTYPE html>
-<html class="<?php echo $helpers->renderBodyClass(); ?>" lang="<?php echo $helpers->_('en'); 
+<html class="pw <?php echo $helpers->renderBodyClass(); ?>" lang="<?php echo $helpers->_('en'); 
 	/* this intentionally on a separate line */ ?>">
 <head>
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
@@ -56,6 +62,7 @@ $extras = $adminTheme->getExtraMarkup();
 	<script type="text/javascript"><?php echo $helpers->renderJSConfig(); ?></script>
 	<?php foreach($config->styles as $file) echo "\n\t<link type='text/css' href='$file' rel='stylesheet' />"; ?>
 	<?php foreach($config->scripts as $file) echo "\n\t<script type='text/javascript' src='$file'></script>"; ?>
+	<?php echo $extras['head']; ?>
 
 </head>
 
@@ -72,7 +79,7 @@ $extras = $adminTheme->getExtraMarkup();
 
 		<a href="#" class='main-nav-toggle'><i class="fa fa-bars"></i></a>
 		
-		<div id="masthead" class="masthead ui-helper-clearfix">
+		<div id="masthead" class="pw-masthead masthead ui-helper-clearfix">
 			
 			<?php echo $extras['masthead']; ?>
 
@@ -107,7 +114,7 @@ $extras = $adminTheme->getExtraMarkup();
 				<h1 id="title"><?php echo $helpers->getHeadline(); ?></h1>
 			</div>
 
-			<div id="content" class="content fouc_fix">
+			<div id="content" class="pw-content content pw-fouc-fix">
 
 				<?php
 				if($page->body) echo $page->body;
@@ -117,7 +124,7 @@ $extras = $adminTheme->getExtraMarkup();
 
 			</div>
 
-			<div id="footer" class="footer">
+			<div id="footer" class="pw-footer footer">
 				<p>
 					<?php if(!$user->isGuest()): ?>
 						<span id="userinfo">

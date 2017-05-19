@@ -7,6 +7,8 @@
  * and is managed by the 'Fields' class.
  * 
  * #pw-summary Field represents a custom field that is used on a Page.
+ * #pw-var $field
+ * #pw-instantiate $field = $fields->get('field_name');
  * #pw-body Field objects are managed by the `$fields` API variable. 
  * #pw-use-constants
  * 
@@ -29,6 +31,12 @@
  * @property array $viewRoles Role IDs with view access, applicable only if access control is enabled. #pw-group-access
  * @property array|null $orderByCols Columns that WireArray values are sorted by (default=null), Example: "sort" or "-created". #pw-internal
  * @property int|null $paginationLimit Used by paginated WireArray values to indicate limit to use during load. #pw-internal
+ *
+ * Common Inputfield properties that Field objects store:  
+ * @property int|bool|null $required Whether or not this field is required during input #pw-group-properties
+ * @property string|null $requiredIf A selector-style string that defines the conditions under which input is required #pw-group-properties
+ * @property string|null $showIf A selector-style string that defines the conditions under which the Inputfield is shown #pw-group-properties
+ * @property int|null $columnWidth The Inputfield column width (percent) 10-100. #pw-group-properties
  * 
  * @method bool viewable(Page $page = null, User $user = null) Is the field viewable on the given $page by the given $user? #pw-group-access
  * @method bool editable(Page $page = null, User $user = null) Is the field editable on the given $page by the given $user? #pw-group-access
@@ -210,7 +218,7 @@ class Field extends WireData implements Saveable, Exportable {
 	 *
 	 * @param string $key Property name to set
 	 * @param mixed $value
-	 * @return $this
+	 * @return Field|WireData
 	 *
 	 */
 	public function set($key, $value) {
@@ -802,8 +810,9 @@ class Field extends WireData implements Saveable, Exportable {
 		$inputfield->attr('name', $this->name . $contextStr); 
 		$inputfield->set('label', $this->label);
 
-		// just in case an Inputfield needs to know it's Fieldtype context, or lack of it
-		$inputfield->set('hasFieldtype', $this->type); 
+		// just in case an Inputfield needs to know its Fieldtype/Field context, or lack of it
+		$inputfield->set('hasFieldtype', $this->type);
+		$inputfield->set('hasField', $this); 
 		
 		// custom field settings
 		foreach($this->data as $key => $value) {
@@ -996,6 +1005,8 @@ class Field extends WireData implements Saveable, Exportable {
 
 	/**
 	 * Set an override table name, or omit (or null) to restore default table name
+	 * 
+	 * #pw-group-advanced
 	 * 
 	 * @param null|string $table
 	 * 

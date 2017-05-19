@@ -24,17 +24,23 @@ var InputfieldPageAutocomplete = {
 		var numFound = 0; // indicating number of pages matching during last ajax request
 		var disableChars = $input.attr('data-disablechars'); 
 		var noList = $input.hasClass('no_list');
-	
-		var iconHeight = $icon.height();
-		if(iconHeight) {
-			var pHeight = $icon.parent().height();
-			var iconTop = ((pHeight - iconHeight) / 2);
-			$icon.css('top', iconTop + 'px');
-			$icon.css('left', (iconTop / 2) + 'px');
-		} else {
-			// icon is not visible (in a tab or collapsed field), we'll leave it alone
-		}	
 		
+		function setIconPosition($icon, side) {
+			var iconHeight = $icon.height();
+			if(iconHeight) {
+				var pHeight = $icon.parent().height();
+				var iconTop = ((pHeight - iconHeight) / 2);
+				$icon.css('top', iconTop + 'px');
+				if(side == 'left') {
+					$icon.css('left', (iconTop / 2) + 'px');
+				} else if(side == 'right') {
+					$icon.css('right', (iconTop / 4) + 'px');
+				}
+			} else {
+				// icon is not visible (in a tab or collapsed field), we'll leave it alone
+			}	
+		}
+	
 		function hasDisableChar(str) {
 			if(!disableChars || !disableChars.length) return false;
 			var disable = false;
@@ -47,11 +53,14 @@ var InputfieldPageAutocomplete = {
 			return disable;
 		}
 		
+		setIconPosition($icon, 'left');
+		
 		if(noList) {
 			// specific to single-item autocompletes, where there is no separate "selected" list
 			
 			$input.attr('data-selectedLabel', $input.val());
 			var $remove = $input.siblings('.InputfieldPageAutocompleteRemove');
+			setIconPosition($remove, 'right');
 			
 			$remove.click(function() {
 				$value.val('').change();
@@ -286,8 +295,8 @@ var InputfieldPageAutocomplete = {
 	pageSelected: function($ol, page) {
 
 		var dup = false;
-		
-		$ol.children('li').each(function() {
+	
+		$ol.children('li:not(.itemTemplate)').each(function() {
 			var v = parseInt($(this).children('.itemValue').text());	
 			if(v == page.page_id) dup = $(this);
 		});

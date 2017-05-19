@@ -36,9 +36,19 @@ function __($text, $textdomain = null, $context = '') {
 			$textdomain = $traces[1]['file'];
 		}
 		if(is_null($textdomain)) $textdomain = 'site';
+	} else if($textdomain === 'common') {
+		// common translation
+		$textdomain = 'wire/modules/LanguageSupport/LanguageTranslator.php';
 	}
-	$value = htmlspecialchars($language->translator()->getTranslation($textdomain, $text, $context), ENT_QUOTES, 'UTF-8');
-	if($value === "=") $value = $text;
+	$value = $language->translator()->getTranslation($textdomain, $text, $context);
+	if($value === "=") {
+		$value = $text;
+	} else if($value === "+") {
+		$v = $language->translator()->commonTranslation($text);
+		$value = empty($v) ? $text : $v;
+	} else {
+		$value = htmlspecialchars($value, ENT_QUOTES, 'UTF-8', false);
+	}
 	return $value;
 }
 

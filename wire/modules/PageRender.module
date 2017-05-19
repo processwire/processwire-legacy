@@ -245,6 +245,7 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 	 * 
 	 */
 	public function ___clearCacheFilePages(PageArray $items, Page $page) {
+		if($page) {}
 		foreach($items as $p) {
 			if(((int) $p->template->cache_time) < 1) continue;
 			$cf = $this->getCacheFile($p);
@@ -314,8 +315,14 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 					'findTemplates'  => false,
 					'joinSortfield'  => false
 				));
+				if(!$items->has($page)) $items->add($page);
+			} else {
+				$items = new PageArray();
+				$items->add($page);
+			}
+			if(count($items)) {
 				$this->clearCacheFilePages($items, $page);
-				$this->message(sprintf($this->_('Cleared cache file for %d page(s)'), count($pageIDs)), Notice::debug);
+				$this->message(sprintf($this->_('Cleared cache file for %d page(s)'), count($items)), Notice::debug);
 			}
 		}
 	}
@@ -336,7 +343,9 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 			if(!is_string($file)) $file = null;
 			$event->cancelHooks = true;
 			$event->replace = true;
-			$event->return = $event->object->renderField($fieldName, $file);
+			/** @var Page $page */
+			$page = $event->object; 
+			$event->return = $page->renderField($fieldName, $file);
 		}
 	}
 
@@ -362,7 +371,6 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 	 *	variables of your own names to $options as needed for communication with the template, if it suits your need. 
 	 *
 	 * @param HookEvent $event
-	 * @return string rendered data
 	 * @throws WirePermissionException|WireException
 	 *
 	 */
@@ -383,6 +391,7 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 		$_page = $this->wire('page'); // just in case one page is rendering another, save the previous
 		$config = $this->wire('config');
 		$compiler = null;
+		$compilerOptions = array();
 		if($config->templateCompile && $template->compile) {
 			$compilerOptions = array(
 				'namespace' => strlen(__NAMESPACE__) > 0, 
@@ -500,7 +509,17 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 			// own additional variables in it if they want to
 			$output->set('options', $options);
 
+			$profiler = $this->wire('profiler');
+			$profilerEvent = $profiler ? $profiler->start($page->path, $this, array('page' => $page)) : null;
 			$data = $output->render();
+			if($profilerEvent) $profiler->stop($profilerEvent);
+			if(!strlen($data) && $page->template->name === 'admin' && !is_readable($options['filename'])) {
+				throw new WireException('Missing or non-readable template file: ' . basename($options['filename']));
+			}
+		}
+	
+		if($this->wire('config')->useMarkupRegions) {
+			$this->populateMarkupRegions($data);
 		}
 
 		if($data && $cacheAllowed && $cacheFile) $cacheFile->save($data);
@@ -512,6 +531,28 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 		}
 		if(count($this->pageStack)) array_pop($this->pageStack); 
 		$this->renderRecursionLevel--;
+	}
+
+	/**
+	 * Populate markup regions directly to $html
+	 * 
+	 * @param $html
+	 * 
+	 */
+	protected function populateMarkupRegions(&$html) {
+		$pos = stripos($html, '<!DOCTYPE');
+		if($pos === false) {
+			// if no doctype match, attempt an html tag match
+			$pos = stripos($html, '<html'); 
+		}
+		if($pos) {
+			// split document at doctype/html boundary
+			$htmlBefore = substr($html, 0, $pos);
+			$html = substr($html, $pos);
+			$markupRegions = new WireMarkupRegions();
+			$this->wire($markupRegions);
+			$markupRegions->populate($html, $htmlBefore);
+		}
 	}
 
 	/**
@@ -654,10 +695,14 @@ class PageRender extends WireData implements Module, ConfigurableModule {
 
 	/**
 	 * Provide a disk cache clearing capability within the module's configuration screen
+	 * 
+	 * @param array $data
+	 * @return InputfieldWrapper
 	 *
 	 */
 	public function getModuleConfigInputfields(array $data) {
 
+		if($data) {}
 		$path = $this->wire('config')->paths->cache . self::cacheDirName . '/';
 		$numPages = 0;
 		$numFiles = 0;

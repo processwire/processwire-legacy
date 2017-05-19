@@ -38,6 +38,11 @@ class PagesEditor extends Wire {
 	
 	public function __construct(Pages $pages) {
 		$this->pages = $pages;
+
+		$config = $pages->wire('config');
+		if($config->dbStripMB4 && strtolower($config->dbEngine) != 'utf8mb4') {
+			$this->addHookAfter('Fieldtype::sleepValue', $this, 'hookFieldtypeSleepValueStripMB4');
+		}
 	}
 	
 	public function isCloning() {
@@ -504,7 +509,12 @@ class PagesEditor extends Wire {
 		$systemVersion = $config->systemVersion;
 		if(!$page->created_users_id) $page->created_users_id = $userID;
 		if($page->isChanged('status') && empty($options['noHooks'])) $this->pages->statusChangeReady($page);
-		$extraData = empty($options['noHooks']) ? $this->pages->saveReady($page) : array();
+		if(empty($options['noHooks'])) {
+			$extraData = $this->pages->saveReady($page); 
+			$this->pages->savePageOrFieldReady($page);
+		} else {
+			$extraData = array();
+		}
 		$sql = '';
 
 		if(strpos($page->name, $this->untitledPageName) === 0) $this->pages->setupPageName($page);
@@ -659,7 +669,10 @@ class PagesEditor extends Wire {
 		// if page hasn't changed, don't continue further
 		if(!$page->isChanged() && !$isNew) {
 			$this->pages->debugLog('save', '[not-changed]', true);
-			if(empty($options['noHooks'])) $this->pages->saved($page, array());
+			if(empty($options['noHooks'])) {
+				$this->pages->saved($page, array());
+				$this->pages->savedPageOrField($page, array());
+			}
 			return true;
 		}
 
@@ -744,6 +757,7 @@ class PagesEditor extends Wire {
 		// trigger hooks
 		if(empty($options['noHooks'])) {
 			$this->pages->saved($page, $changes, $changesValues);
+			$this->pages->savedPageOrField($page, $changes);
 			if($triggerAddedPage) $this->pages->added($triggerAddedPage);
 			if($page->namePrevious && $page->namePrevious != $page->name) $this->pages->renamed($page);
 			if($page->parentPrevious) $this->pages->moved($page);
@@ -799,7 +813,10 @@ class PagesEditor extends Wire {
 		if($value instanceof Pagefiles || $value instanceof Pagefile) $page->filesManager()->save();
 		$page->trackChange($field->name);
 
-		if(empty($options['noHooks'])) $this->pages->saveFieldReady($page, $field);
+		if(empty($options['noHooks'])) {
+			$this->pages->saveFieldReady($page, $field);
+			$this->pages->savePageOrFieldReady($page, $field->name);
+		}
 		
 		if($field->type->savePageField($page, $field)) {
 			$page->untrackChange($field->name);
@@ -813,7 +830,10 @@ class PagesEditor extends Wire {
 				$database->execute($query);
 			}
 			$return = true;
-			if(empty($options['noHooks'])) $this->pages->savedField($page, $field);
+			if(empty($options['noHooks'])) {
+				$this->pages->savedField($page, $field);
+				$this->pages->savedPageOrField($page, array($field->name));
+			}
 		} else {
 			$return = false;
 		}
@@ -864,7 +884,10 @@ class PagesEditor extends Wire {
 		} while(1);
 
 		if($insertSql) {
-			$sql = "INSERT INTO pages_parents (pages_id, parents_id) VALUES" . rtrim($insertSql, ",");
+			$sql = 
+				'INSERT INTO pages_parents (pages_id, parents_id) ' . 
+				'VALUES' . rtrim($insertSql, ',') . ' ' . 
+				'ON DUPLICATE KEY UPDATE parents_id=VALUES(parents_id)';
 			$database->exec($sql);
 		}
 
@@ -951,24 +974,34 @@ class PagesEditor extends Wire {
 	 * this method will throw an exception. If a recursive delete fails for any reason, an exception will be thrown.
 	 *
 	 * @param Page $page
-	 * @param bool $recursive If set to true, then this will attempt to delete all children too.
-	 * @param array $options Optional settings to change behavior (for the future)
+	 * @param bool|array $recursive If set to true, then this will attempt to delete all children too.
+	 *   If you don't need this argument, optionally provide $options array instead. 
+	 * @param array $options Optional settings to change behavior:
+	 *   - uncacheAll (bool): Whether to clear memory cache after delete (default=false)
+	 *   - recursive (bool): Same as $recursive argument, may be specified in $options array if preferred.
 	 * @return bool|int Returns true (success), or integer of quantity deleted if recursive mode requested.
 	 * @throws WireException on fatal error
 	 *
 	 */
 	public function delete(Page $page, $recursive = false, array $options = array()) {
+		
+		$defaults = array(
+			'uncacheAll' => false, 
+			'recursive' => is_bool($recursive) ? $recursive : false,
+		);
+	
+		if(is_array($recursive)) $options = $recursive; 	
+		$options = array_merge($defaults, $options);
 
-		if($options) {} // to ignore unused parameter inspection
 		if(!$this->isDeleteable($page)) throw new WireException("This page may not be deleted");
 		$numDeleted = 0;
 
 		if($page->numChildren) {
-			if(!$recursive) {
+			if(!$options['recursive']) {
 				throw new WireException("Can't delete Page $page because it has one or more children.");
 			} else foreach($page->children("include=all") as $child) {
 				/** @var Page $child */
-				if($this->pages->delete($child, true)) {
+				if($this->pages->delete($child, true, $options)) {
 					$numDeleted++;
 				} else {
 					throw new WireException("Error doing recursive page delete, stopped by page $child");
@@ -990,6 +1023,7 @@ class PagesEditor extends Wire {
 		} catch(\Exception $e) {
 		}
 
+		/** @var PagesAccess $access */
 		$access = $this->wire(new PagesAccess());
 		$access->deletePage($page);
 
@@ -1008,10 +1042,10 @@ class PagesEditor extends Wire {
 		$page->status = Page::statusDeleted; // no need for bitwise addition here, as this page is no longer relevant
 		$this->pages->deleted($page);
 		$numDeleted++;
-		$this->pages->uncacheAll($page);
+		if($options['uncacheAll']) $this->pages->uncacheAll($page);
 		$this->pages->debugLog('delete', $page, true);
 
-		return $recursive ? $numDeleted : true;
+		return $options['recursive'] ? $numDeleted : true;
 	}
 	
 	/**
@@ -1033,23 +1067,27 @@ class PagesEditor extends Wire {
 		if(is_string($options)) $options = Selectors::keyValueStringToArray($options);
 		if(!isset($options['recursionLevel'])) $options['recursionLevel'] = 0; // recursion level
 
-		// if parent is not changing, we have to modify name now
-		if(is_null($parent)) {
-			$parent = $page->parent;
-			$n = 1;
-			$name = $page->name . '-' . $n;
+		if(isset($options['set']) && isset($options['set']['name'])) {
+			$name = $options['set']['name'];
+			
 		} else {
-			$name = $page->name;
-			$n = 0;
-		}
+			// if parent is not changing, we have to modify name now
+			if(is_null($parent) || $parent->id == $page->parent->id) {
+				$parent = $page->parent;
+				$n = 1;
+				$name = $page->name . '-' . $n;
+			} else {
+				$name = $page->name;
+				$n = 0;
+			}
 
-		// make sure that we have a unique name
-
-		while(count($parent->children("name=$name, include=all"))) {
-			$name = $page->name;
-			$nStr = "-" . (++$n);
-			if(strlen($name) + strlen($nStr) > Pages::nameMaxLength) $name = substr($name, 0, Pages::nameMaxLength - strlen($nStr));
-			$name .= $nStr;
+			// make sure that we have a unique name
+			while(count($parent->children("name=$name, include=all"))) {
+				$name = $page->name;
+				$nStr = "-" . (++$n);
+				if(strlen($name) + strlen($nStr) > Pages::nameMaxLength) $name = substr($name, 0, Pages::nameMaxLength - strlen($nStr));
+				$name .= $nStr;
+			}
 		}
 
 		// Ensure all data is loaded for the page
@@ -1115,7 +1153,7 @@ class PagesEditor extends Wire {
 			$page->filesManager->copyFiles($copy->filesManager->path());
 		}
 
-		// if there are children, then recurisvely clone them too
+		// if there are children, then recursively clone them too
 		if($page->numChildren && $recursive) {
 			$start = 0;
 			$limit = 200;
@@ -1136,6 +1174,12 @@ class PagesEditor extends Wire {
 		// update pages_parents table, only when at recursionLevel 0 since pagesParents is already recursive
 		if($recursive && $options['recursionLevel'] === 0) {
 			$this->saveParents($copy->id, $copy->numChildren);
+		}
+		
+		if($options['recursionLevel'] === 0) {
+			if($copy->parent()->sortfield() == 'sort') {
+				$this->sortPage($copy, $copy->sort, true);
+			}
 		}
 
 		$copy->resetTrackChanges();
@@ -1191,5 +1235,170 @@ class PagesEditor extends Wire {
 		if(strpos($sql, ':modified')) $query->bindValue(':modified', date('Y-m-d H:i:s', $modified));
 		
 		return $this->wire('database')->execute($query);
+	}
+
+	/**
+	 * Set page $sort value and increment siblings having same or greater sort value 
+	 * 
+	 * - This method is primarily applicable if configured sortfield is manual “sort” (or “none”).
+	 * - This is typically used after a move, sort, clone or delete operation. 
+	 * 
+	 * @param Page $page Page that you want to set the sort value for
+	 * @param int|null $sort New sort value for page or null to pull from $page->sort
+	 * @param bool $after If another page already has the sort, make $page go after it rather than before it? (default=false)
+	 * @throws WireException if given invalid arguments
+	 * @return int Number of sibling pages that had to have sort adjusted
+	 * 
+	 */
+	public function sortPage(Page $page, $sort = null, $after = false) {
+	
+		$database = $this->wire('database');
+
+		// reorder siblings having same or greater sort value, when necessary
+		if($page->id <= 1) return 0;
+		if(is_null($sort)) $sort = $page->sort;
+		
+		// determine if any other siblings have same sort value
+		$sql = 'SELECT id FROM pages WHERE parent_id=:parent_id AND sort=:sort AND id!=:id';
+		$query = $database->prepare($sql);
+		$query->bindValue(':parent_id', $page->parent_id, \PDO::PARAM_INT);
+		$query->bindValue(':sort', $sort, \PDO::PARAM_INT);
+		$query->bindValue(':id', $page->id, \PDO::PARAM_INT);
+		$query->execute();
+		$rowCount = $query->rowCount();
+		$query->closeCursor();
+	
+		// move sort to after if requested
+		if($after && $rowCount) $sort += $rowCount;
+		
+		// update $page->sort property if needed
+		if($page->sort != $sort) $page->sort = $sort;
+		
+		// make sure that $page has the sort value indicated
+		$sql = 'UPDATE pages SET sort=:sort WHERE id=:id';
+		$query = $database->prepare($sql);
+		$query->bindValue(':sort', $sort, \PDO::PARAM_INT);
+		$query->bindValue(':id', $page->id, \PDO::PARAM_INT);
+		$query->execute();
+		$sortCnt = $query->rowCount();
+		
+		// no need for $page to have 'sort' indicated as a change, since we just updated it above
+		$page->untrackChange('sort');
+
+		if($rowCount) {
+			// update order of all siblings 
+			$sql = 'UPDATE pages SET sort=sort+1 WHERE parent_id=:parent_id AND sort>=:sort AND id!=:id';
+			$query = $database->prepare($sql);
+			$query->bindValue(':parent_id', $page->parent_id, \PDO::PARAM_INT);
+			$query->bindValue(':sort', $sort, \PDO::PARAM_INT);
+			$query->bindValue(':id', $page->id, \PDO::PARAM_INT);
+			$query->execute();
+			$sortCnt += $query->rowCount();
+		}
+	
+		// call the sorted hook
+		$this->pages->sorted($page, false, $sortCnt);
+	
+		return $sortCnt;
+	}
+
+	/**
+	 * Sort one page before another (for pages using manual sort)
+	 * 
+	 * Note that if given $sibling parent is different from `$page` parent, then the `$pages->save()`
+	 * method will also be called to perform that movement. 
+	 * 
+	 * @param Page $page Page to move/sort
+	 * @param Page $sibling Sibling that page will be moved/sorted before 
+	 * @param bool $after Specify true to make $page move after $sibling instead of before (default=false)
+	 * @throws WireException When conditions don't allow page insertions
+	 * 
+	 */
+	public function insertBefore(Page $page, Page $sibling, $after = false) {
+		$sortfield = $sibling->parent()->sortfield();
+		if($sortfield != 'sort') {
+			throw new WireException('Insert before/after operations can only be used with manually sorted pages');
+		}
+		if(!$sibling->id || !$page->id) {
+			throw new WireException('New pages must be saved before using insert before/after operations');
+		}
+		if($sibling->id == 1 || $page->id == 1) {
+			throw new WireException('Insert before/after operations cannot involve homepage');
+		}
+		$page->sort = $sibling->sort;
+		if($page->parent_id != $sibling->parent_id) {
+			// page needs to be moved first
+			$page->parent = $sibling->parent;
+			$page->save();
+		}
+		$this->sortPage($page, $page->sort, $after); 
+	}
+
+	/**
+	 * Rebuild the “sort” values for all children of the given $parent page, fixing duplicates and gaps
+	 * 
+	 * If used on a $parent not currently sorted by by “sort” then it will update the “sort” index to be
+	 * consistent with whatever the pages are sorted by. 
+	 * 
+	 * @param Page $parent
+	 * @return int
+	 * 
+	 */
+	public function sortRebuild(Page $parent) {
+		
+		if(!$parent->id || !$parent->numChildren) return 0;
+		$database = $this->wire('database');
+		$sorts = array();
+		$sort = 0;
+		
+		if($parent->sortfield() == 'sort') {
+			// pages are manually sorted, so we can find IDs directly from the database
+			$sql = 'SELECT id FROM pages WHERE parent_id=:parent_id ORDER BY sort, created';
+			$query = $database->prepare($sql);
+			$query->bindValue(':parent_id', $parent->id, \PDO::PARAM_INT);
+			$query->execute();
+
+			// establish new sort values
+			do {
+				$id = (int) $query->fetch(\PDO::FETCH_COLUMN);
+				if(!$id) break;
+				$sorts[] = "($id,$sort)";
+			} while(++$sort);
+
+			$query->closeCursor();
+			
+		} else {
+			// children of $parent don't currently use "sort" as sort property
+			// so we will update the "sort" of children to be consistent with that
+			// of whatever sort property is in use. 
+			$o = array('findIDs' => 1, 'cache' => false);
+			foreach($parent->children('include=all', $o) as $id) {
+				$id = (int) $id;
+				$sorts[] = "($id,$sort)";	
+				$sort++;
+			}
+		}
+
+		// update sort values
+		$query = $database->prepare(
+			'INSERT INTO pages (id,sort) VALUES ' . implode(',', $sorts) . ' ' .
+			'ON DUPLICATE KEY UPDATE sort=VALUES(sort)'
+		);
+
+		$query->execute();
+		
+		return count($sorts);
+	}
+
+	/**
+	 * Hook after Fieldtype::sleepValue to remove MB4 characters when present and applicable
+	 * 
+	 * This hook is only used if $config->dbStripMB4 is true and $config->dbEngine is not “utf8mb4”. 
+	 * 
+	 * @param HookEvent $event
+	 * 
+	 */
+	protected function hookFieldtypeSleepValueStripMB4(HookEvent $event) {
+		$event->return = $this->wire('sanitizer')->removeMB4($event->return); 
 	}
 }

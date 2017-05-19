@@ -6,6 +6,11 @@
  * ProcessWire 2.8.x, Copyright 2016 by Ryan Cramer
  * https://processwire.com
  * License: MPL 2.0
+ * 
+ * @property bool $header Whether or not button will also appear in header (default=false). 
+ * @property bool $secondary Whether or not button is secondary (default=false). 
+ * @property bool $small Whether or not button should be small, where supported (default=false). 
+ * @property string $dropdownInputName #pw-internal
  *
  */
 class InputfieldSubmit extends Inputfield {
@@ -38,9 +43,95 @@ class InputfieldSubmit extends Inputfield {
 		$this->attr('value', $this->_('Submit')); // Standard submit button label
 		$this->attr('class', 'ui-button ui-widget ui-state-default ui-corner-all');
 		$this->skipLabel = Inputfield::skipLabelBlank; 
+		$this->set('small', false);
 		
 		// name of 'hidden' input that will receive the clicked dropdown item value
 		$this->set('dropdownInputName', '_action_value');
+	}
+	
+	public function set($key, $value) {
+		if($key == 'header') {
+			$this->showInHeader($value);
+		} else if($key == 'secondary') {
+			$this->setSecondary($value);
+		}
+		return parent::set($key, $value);
+	}
+	
+	public function get($key) {
+		if($key == 'header') return $this->hasClass('pw-head-button');
+		if($key == 'secondary') return $this->hasClass('ui-priority-secondary');
+		return parent::get($key);
+	}
+
+	/**
+	 * Show another copy of this button in the header? 
+	 * 
+	 * @param bool $show True=yes, false=no (default=true)
+	 * @return $this
+	 * 
+	 */
+	public function showInHeader($show = true) {
+		if($show) {
+			$this->addClass('pw-head-button');
+		} else {
+			$this->removeClass('pw-head-button');
+		}
+		return $this;
+	}
+
+	/**
+	 * Make this button secondary? (slightly faded)
+	 * 
+	 * Note: by default, buttons are not secondary
+	 * 
+	 * @param bool $secondary Default=true
+	 * @return $this
+	 * 
+	 */
+	public function setSecondary($secondary = true) {
+		if($secondary) {
+			$this->addClass('ui-priority-secondary');
+		} else {
+			$this->removeClass('ui-priority-secondary');
+		}
+		return $this;
+	}
+	
+	/**
+	 * Make this button small?
+	 * 
+	 * By default, buttons are regular size. This makes them small.
+	 * Supported only for non-dropdown, non-header buttons. 
+	 *
+	 * @param bool $small Default=true
+	 * @return $this
+	 *
+	 */
+	public function setSmall($small = true) {
+		$this->set('small', $small ? true : false);
+		return $this;
+	}
+
+	/**
+	 * Render ready
+	 * 
+	 * @param Inputfield|InputfieldWrapper|null The parent InputfieldWrapper that is rendering it, or null if no parent.
+	 * @param bool $renderValueMode Specify true only if this is for `Inputfield::renderValue()` rather than `Inputfield::render()`.
+	 * @return bool True if assets were just added, false if already added.
+	 *
+	 */
+	public function renderReady(Inputfield $parent = null, $renderValueMode = false) {
+		$class = $this->attr('class');	
+		if(strpos($class, 'head_button_clone') !== false) {
+			// if legacy class name used, convert to updated pw- class name to accomodate 3rd party usages
+			$class = str_replace('head_button_clone', 'pw-head-button', $class);
+			$this->attr('class', $class);
+		}
+		if($this->getSetting('small')) {
+			$this->addClass('InputfieldSubmitSmall', 'wrapClass');
+		}
+		return parent::renderReady($parent, $renderValueMode);
 	}
 
 	/**
@@ -54,7 +145,8 @@ class InputfieldSubmit extends Inputfield {
 		$icon = $this->icon ? $this->sanitizer->name($this->icon) : '';
 		$icon = $icon ? "<i class='fa fa-$icon'></i> " : '';
 		$value = $this->entityEncode($this->attr('value'));
-		$out = "\n<button $attrs><span class='ui-button-text'>$icon$value</span></button>";
+		$out = "<button $attrs><span class='ui-button-text'>$icon$value</span></button>";
+		if($this->getSetting('small')) $out = "<small>$out</small>";
 		if(count($this->dropdownItems)) $out .= $this->renderDropdown();
 		return $out; 
 	}
@@ -67,14 +159,13 @@ class InputfieldSubmit extends Inputfield {
 	 */
 	protected function renderDropdown() {
 
-		if($this->wire('input')->get('modal') || $this->wire('session')->get('touch')) return '';
+		if($this->wire('input')->get('modal')) return '';
 		
 		$config = $this->wire('config');
 		$file = $config->debug ? 'dropdown.js' : 'dropdown.min.js';
 		$config->scripts->add($config->urls->InputfieldSubmit . $file);
 		$numValues = 0;
 		$dropdownID = $this->attr('id') . '_dropdown';
-		$out = '';
 		$out  = "<ul id='$dropdownID' class='pw-button-dropdown' data-my='left top' data-at='left bottom+1'>";
 
 		foreach($this->dropdownItems as $item) {
@@ -90,7 +181,7 @@ class InputfieldSubmit extends Inputfield {
 				$out .= "<li><a href='$item[value]'>";
 			} else {
 				// populate hidden input with value before submit
-				$out .= "<li><a data-dropdown-value='$item[value]' href='#'>";
+				$out .= "<li><a data-pw-dropdown-value='$item[value]' href='#'>";
 				$numValues++;
 			}
 			// icon to accompany label
@@ -106,11 +197,11 @@ class InputfieldSubmit extends Inputfield {
 			// there are values that can be populated to a hidden input
 			$inputID = $dropdownID . '_value';
 			$out = "<input type='hidden' name='{$this->dropdownInputName}' id='$inputID' value='' />" .
-				str_replace("<ul ", "<ul data-dropdown-input='#$inputID' ", $out);
+				str_replace("<ul ", "<ul data-pw-dropdown-input='#$inputID' ", $out);
 		}
 	
 		// script to initialize this dropdown immediately
-		$out .= "<script>InputfieldSubmitDropdown.init('#{$this->id}')</script>";
+		$out .= "<script" . ">InputfieldSubmitDropdown.init('#{$this->id}')</script>";
 		
 		return $out; 
 	}
@@ -130,7 +221,7 @@ class InputfieldSubmit extends Inputfield {
 	/**
 	 * Add a dropdown item to this button
 	 * 
-	 * @param string string $type Either 'link' or 'value'
+	 * @param string $type Either 'link' or 'value'
 	 * @param string|int $value
 	 * @param string $label
 	 * @param string $icon

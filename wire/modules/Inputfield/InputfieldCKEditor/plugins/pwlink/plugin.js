@@ -116,8 +116,13 @@
 			// existing link
 			$existingLink = jQuery(node.$);
 			selectionText = node.getHtml();
-			selection.selectElement(node); 
-
+			selection.selectElement(node);
+		} else if(nodeName == 'td' || nodeName == 'th' || nodeName == 'tr') {
+			var firstChar = selectionText.substring(0,1);
+			if(firstChar == "\n" || firstChar == "\r") {
+				ProcessWire.alert('Your selection includes part of the table. Please try selecting the text again.');
+				return;
+			}
 		} else if(nodeName == 'img') {
 			// linked image
 			var $img = jQuery(node.$);
@@ -134,7 +139,17 @@
 		// build the modal URL
 		var modalUrl = ProcessWire.config.urls.admin + 'page/link/?id=' + pageID + '&modal=1';
 		var $langWrapper = $textarea.closest('.LanguageSupport');
-		if($langWrapper.length) modalUrl += "&lang=" + $langWrapper.data("language");
+		
+		if($langWrapper.length) {
+			// multi-language field
+			modalUrl += "&lang=" + $langWrapper.data("language");
+		} else {
+			// multi-language field in Table
+			$langWrapper = $textarea.parents('.InputfieldTable_langTabs').find('li.ui-state-active a')
+			if($langWrapper.length && typeof $langWrapper.data('lang') != "undefined") {
+				modalUrl += "&lang=" + $langWrapper.data('lang');
+			}
+		}
 		
 		if($existingLink != null) {
 			var attrs = ['href', 'title', 'class', 'rel', 'target']; 

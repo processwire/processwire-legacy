@@ -3,7 +3,7 @@
  *
  */
 
-.content {
+.pw-content {
 
 	/**
 	 * Actions: like the "|edit|view|new" in the PageList
@@ -140,7 +140,7 @@
 			}
 		}
 
-		.PageListStatusHidden:not(.PageListItemOpen) {
+		.PageListStatusHidden { //:not(.PageListItemOpen) {
 			> a.PageListPage {
 				opacity: 0.6;
 			}
@@ -170,5 +170,19 @@
 
 .PageListPagination a {
 	margin-bottom: 5px; 
+}
+
+.pw-dropdown-menu {
+	.PageListStatusUnpublished {
+		text-decoration: line-through;
+	}
+
+	.PageListStatusHidden {
+		opacity: 0.5;
+	}
+
+	.PageListStatusNotEditable {
+		cursor: not-allowed;
+	}
 }
 
